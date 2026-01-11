@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>MEGA SURVIVOR IO - ULTIMATE</title>
+    <style>
+        :root { --p: #00ff88; --bg: #222; --gold: #ffaa00; --red: #ff4444; }
+        * { box-sizing: border-box; font-family: 'Segoe UI', sans-serif; user-select: none; }
+        body { margin: 0; background: var(--bg); overflow: hidden; height: 100vh; }
+        
+        /* Дизайн Survivor.io */
+        #game-bg {
+            position: absolute; inset: 0; z-index: 0;
+            background-color: #80c080;
+            background-image: linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
+            background-size: 60px 60px;
+        }
+        canvas { position: absolute; inset: 0; z-index: 1; }
+
+        .screen { position: absolute; inset: 0; display: flex; flex-direction: column; z-index: 10; background: #f0f0f0; }
+        .hidden { display: none !important; }
+        
+        .top-bar { display: flex; justify-content: space-between; padding: 10px; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 20; }
+        .player-lvl { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .lvl-badge { background: var(--p); width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid #000; }
+        
+        .tab-content { flex: 1; overflow-y: auto; padding: 15px; padding-bottom: 80px; }
+        .nav-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 70px; background: #fff; display: flex; border-top: 1px solid #ddd; z-index: 30; }
+        .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: #999; cursor: pointer; }
+        .nav-btn.active { color: var(--p); font-weight: bold; }
+
+        .card { background: #fff; border-radius: 12px; padding: 15px; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .btn { background: var(--p); border: none; padding: 12px; border-radius: 8px; font-weight: 800; width: 100%; cursor: pointer; box-shadow: 0 4px 0 #00cc6a; }
+        .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #00cc6a; }
+        .btn-blue { background: #4488ff; box-shadow: 0 4px 0 #2266dd; color: white; }
+
+        #hud { position: absolute; inset: 0; pointer-events: none; z-index: 50; padding: 10px; color: #fff; text-shadow: 1px 1px 0 #000; }
+        .bar { width: 100%; height: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; overflow: hidden; margin-bottom: 5px; border: 1px solid #fff; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #eee; padding: 10px; font-size: 12px; }
+        td { padding: 10px; border-bottom: 1px solid #eee; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer" class="screen">
+    <div class="top-bar">
+        <div class="player-lvl" onclick="ui.showLvlDetails()">
+            <div class="lvl-badge" id="g-lvl">1</div>
+            <div style="font-size: 12px;">ПРОФИЛЬ (ИНФО)</div>
+        </div>
+        <div style="font-weight: bold; color: var(--gold);">💰 <span id="g-gold">0</span></div>
+    </div>
+
+    <div id="tab-heroes" class="tab-content">
+        <div class="card">
+            <h3>РЕЖИМ ИГРЫ</h3>
+            <select id="game-mode" class="btn" style="background:#fff; margin-bottom:10px;">
+                <option value="normal">🟢 ОБЫЧНЫЙ</option>
+                <option value="endless">🌀 БЕСКОНЕЧНЫЙ (LVL 3)</option>
+                <option value="boss">👹 ОХОТА НА БОССОВ (LVL 6)</option>
+            </select>
+            <button class="btn" onclick="game.preStart()">В БОЙ</button>
+        </div>
+        <div id="hero-grid" style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px;"></div>
+    </div>
+
+    <div id="tab-rank" class="tab-content hidden">
+        <h3>🏆 ТАБЛИЦА ЛИДЕРОВ</h3>
+        <div style="display:flex; gap:5px; margin-bottom:10px;">
+            <button class="btn btn-blue" onclick="ui.showTop('lvl')">УРОВЕНЬ</button>
+            <button class="btn btn-blue" onclick="ui.showTop('endless')">БЕСКОН.</button>
+            <button class="btn btn-blue" onclick="ui.showTop('boss')">БОССЫ</button>
+        </div>
+        <div class="card" style="padding:0;">
+            <table>
+                <thead><tr><th>#</th><th>ИГРОК</th><th id="rank-col-name">LVL</th></tr></thead>
+                <tbody id="rank-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="nav-bar">
+        <div class="nav-btn active" onclick="ui.tab('heroes')">ИГРА</div>
+        <div class="nav-btn" onclick="ui.tab('rank')">ТОП-100</div>
+    </div>
+</div>
+
+<div id="lvl-details" class="screen hidden" style="background:rgba(0,0,0,0.95); color:#fff; padding:40px; justify-content:center;">
+    <h2>СТАТИСТИКА АККАУНТА</h2>
+    <div class="card" style="background:#333; color:#fff;">
+        <p>УРОВЕНЬ: <b id="det-lvl">1</b></p>
+        <p>ОПЫТ: <span id="det-xp">0/100</span></p>
+        <p>РЕКОРД ВРЕМЕНИ: <span id="det-endless">00:00</span></p>
+        <p>УБИТО БОССОВ: <span id="det-boss">0</span></p>
+    </div>
+    <button class="btn" onclick="document.getElementById('lvl-details').classList.add('hidden')">НАЗАД</button>
+</div>
+
+<div id="game-layer" class="screen hidden" style="background:transparent;">
+    <div id="game-bg"></div>
+    <canvas id="cvs"></canvas>
+    <div id="hud">
+        <div class="bar"><div id="hp-bar" style="width:100%; background:var(--red); height:100%;"></div></div>
+        <div class="bar"><div id="xp-bar" style="width:0%; background:var(--p); height:100%;"></div></div>
+        <div style="display:flex; justify-content:space-between;">
+            <span id="h-time">00:00</span>
+            <span onclick="cheat.open()">⚙️ АДМИН</span>
+        </div>
+    </div>
+    <div id="joy-zone" style="position:absolute; bottom:40px; left:50%; transform:translateX(-50%); width:150px; height:150px; border-radius:50%; background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.3);"></div>
+</div>
+
+<div id="admin-modal" class="screen hidden" style="background:rgba(0,0,0,0.9); color:#fff; padding:20px;">
+    <h2>ADMIN PANEL (MASTER)</h2>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+        <button class="btn" onclick="cheat.toggleVoid()">🌀 ЧЕРНАЯ ДЫРА</button>
+        <button class="btn" onclick="cheat.toggleGod()">😇 БОГ</button>
+        <button class="btn" onclick="cheat.killAll()">💀 УБИТЬ ВСЕХ</button>
+        <button class="btn" onclick="cheat.magnet()">🧲 МАГНИТ</button>
+        <button class="btn" onclick="cheat.addLvl()">🆙 +1 LVL</button>
+        <button class="btn btn-red" onclick="cheat.reset()">❌ СБРОС</button>
+    </div>
+    <button class="btn btn-blue" style="margin-top:20px;" onclick="cheat.close()">ВЫХОД</button>
+</div>
+
+<script>
+const DB_KEY = 'survivor_pro_save';
+const IS_ADMIN = location.search.includes('?ad123');
+
+const app = {
+    data: { gold: 500, playerLvl: 1, playerXp: 0, stats: { mode_endless: 0, mode_boss: 0 } },
+    init() {
+        const load = localStorage.getItem(DB_KEY);
+        if(load) this.data = JSON.parse(load);
+        ui.updateLobby();
+    },
+    save() { localStorage.setItem(DB_KEY, JSON.stringify(this.data)); ui.updateLobby(); },
+    addXp(v) {
+        this.data.playerXp += v;
+        if(this.data.playerXp >= this.data.playerLvl * 100) {
+            this.data.playerXp = 0;
+            this.data.playerLvl++;
+        }
+        this.save();
+    }
+};
+
+const ui = {
+    tab(id) {
+        document.querySelectorAll('.tab-content').forEach(e => e.classList.add('hidden'));
+        document.getElementById('tab-'+id).classList.remove('hidden');
+        if(id === 'rank') this.showTop('lvl');
+    },
+    updateLobby() {
+        document.getElementById('g-lvl').innerText = app.data.playerLvl;
+        document.getElementById('g-gold').innerText = app.data.gold;
+    },
+    showLvlDetails() {
+        document.getElementById('lvl-details').classList.remove('hidden');
+        document.getElementById('det-lvl').innerText = app.data.playerLvl;
+        document.getElementById('det-xp').innerText = `${app.data.playerXp}/${app.data.playerLvl*100}`;
+        const t = Math.floor(app.data.stats.mode_endless / 1000);
+        document.getElementById('det-endless').innerText = `${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`;
+        document.getElementById('det-boss').innerText = app.data.stats.mode_boss;
+    },
+    showTop(type) {
+        const body = document.getElementById('rank-body');
+        document.getElementById('rank-col-name').innerText = type === 'lvl' ? 'LVL' : 'СЧЕТ';
+        body.innerHTML = '';
+        for(let i=1; i<=100; i++) {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${i}</td><td>Игрок_${Math.floor(Math.random()*9999)}</td><td>${101-i}</td>`;
+            body.appendChild(row);
+        }
+    }
+};
+
+const game = {
+    active: false, enemies: [], bullets: [], items: [], props: [],
+    cheats: { void: false, god: false, pendingLvls: 0 },
+    
+    preStart() {
+        document.getElementById('ui-layer').classList.add('hidden');
+        document.getElementById('game-layer').classList.remove('hidden');
+        this.start();
+    },
+
+    start() {
+        this.ctx = document.getElementById('cvs').getContext('2d');
+        this.w = cvs.width = window.innerWidth;
+        this.h = cvs.height = window.innerHeight;
+        this.player = { x: this.w/2, y: this.h/2, hp: 100, maxHp: 100, lvl: 1, xp: 0, nextXp: 50, skills: { orbit_shield: 1 } };
+        this.active = true;
+        this.time = 0;
+        this.loop();
+    },
+
+    loop() {
+        if(!this.active) return;
+        this.update();
+        this.render();
+        requestAnimationFrame(() => this.loop());
+    },
+
+    update() {
+        this.time += 16;
+        if(this.time % 60 === 0) this.spawnEnemy();
+        if(Math.random() < 0.005) this.spawnProp();
+
+        // Логика уровня из админки
+        if(this.cheats.pendingLvls > 0) {
+            this.player.xp = this.player.nextXp;
+            this.cheats.pendingLvls--;
+        }
+
+        this.enemies.forEach((e, i) => {
+            if(this.cheats.void) {
+                e.x += ( (this.player.x - 150) - e.x ) * 0.05;
+                e.y += ( this.player.y - e.y ) * 0.05;
+            } else {
+                let ang = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+                e.x += Math.cos(ang) * 1.5;
+                e.y += Math.sin(ang) * 1.5;
+            }
+            if(Math.hypot(e.x-this.player.x, e.y-this.player.y) < 20 && !this.cheats.god) {
+                this.player.hp -= 0.5;
+            }
+        });
+        
+        // Магнит/Сбор предметов
+        this.items.forEach((it, i) => {
+            if(Math.hypot(it.x-this.player.x, it.y-this.player.y) < 100) {
+                it.x += (this.player.x - it.x) * 0.2;
+                it.y += (this.player.y - it.y) * 0.2;
+                if(Math.hypot(it.x-this.player.x, it.y-this.player.y) < 15) {
+                    app.addXp(it.v); this.items.splice(i,1);
+                }
+            }
+        });
+    },
+
+    spawnEnemy() {
+        let a = Math.random() * 6.28;
+        this.enemies.push({ x: this.player.x + Math.cos(a)*400, y: this.player.y + Math.sin(a)*400, hp: 20, maxHp: 20, color: 'red' });
+    },
+
+    spawnProp() {
+        this.props.push({ x: Math.random()*this.w, y: Math.random()*this.h });
+    },
+
+    render() {
+        const c = this.ctx;
+        c.clearRect(0,0,this.w,this.h);
+        
+        const ox = this.w/2 - this.player.x;
+        const oy = this.h/2 - this.player.y;
+        document.getElementById('game-bg').style.backgroundPosition = `${ox}px ${oy}px`;
+
+        c.save();
+        c.translate(ox, oy);
+
+        this.enemies.forEach(e => {
+            c.fillStyle = e.color;
+            c.beginPath(); c.arc(e.x, e.y, 15, 0, 7); c.fill();
+        });
+
+        this.items.forEach(it => {
+            c.fillStyle = '#0f8';
+            c.beginPath(); c.arc(it.x, it.y, 4, 0, 7); c.fill();
+        });
+
+        this.props.forEach(p => {
+            c.fillStyle = 'brown'; c.fillRect(p.x-15, p.y-15, 30, 30);
+            c.fillStyle = 'white'; c.fillText("🛢️", p.x-8, p.y+5);
+        });
+
+        c.fillStyle = 'white';
+        c.fillRect(this.player.x-12, this.player.y-12, 24, 24);
+
+        if(this.player.skills.orbit_shield) {
+            let t = Date.now()/300;
+            c.fillStyle = 'cyan';
+            c.beginPath(); c.arc(this.player.x + Math.cos(t)*60, this.player.y + Math.sin(t)*60, 8, 0, 7); c.fill();
+        }
+
+        c.restore();
+        
+        document.getElementById('hp-bar').style.width = (this.player.hp/this.player.maxHp*100)+'%';
+        document.getElementById('xp-bar').style.width = (app.data.playerXp/(app.data.playerLvl*100)*100)+'%';
+    }
+};
+
+const cheat = {
+    open() { if(IS_ADMIN) document.getElementById('admin-modal').classList.remove('hidden'); },
+    close() { document.getElementById('admin-modal').classList.add('hidden'); },
+    toggleVoid() { game.cheats.void = !game.cheats.void; },
+    toggleGod() { game.cheats.god = !game.cheats.god; },
+    killAll() { game.enemies.forEach(e => { game.items.push({x:e.x, y:e.y, v:1}); }); game.enemies = []; },
+    magnet() { game.items.forEach(it => { it.x = game.player.x; it.y = game.player.y; }); },
+    addLvl() { game.cheats.pendingLvls++; },
+    reset() { localStorage.removeItem(DB_KEY); location.reload(); }
+};
+
+window.onload = () => app.init();
+</script>
+</body>
+</html>
