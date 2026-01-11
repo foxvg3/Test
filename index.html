@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>MEGA</title>
+    <style>
+        :root { --primary: #00d4ff; --bg: #050805; --panel: rgba(0, 20, 20, 0.9); --gold: #ffd700; --red: #ff4d4d; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: var(--bg); color: #fff; font-family: 'Verdana', sans-serif; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        /* UI Screens */
+        .ui-screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg); z-index: 10; }
+        .hidden { display: none !important; }
+        .panel { background: var(--panel); padding: 25px; border-radius: 20px; border: 2px solid var(--primary); box-shadow: 0 0 20px rgba(0, 212, 255, 0.2); width: 90%; max-width: 400px; text-align: center; }
+
+        /* Buttons & Inputs */
+        .btn { background: var(--primary); color: #000; border: none; padding: 12px 25px; border-radius: 10px; font-weight: bold; cursor: pointer; margin: 5px; width: 100%; transition: 0.2s; }
+        .btn:active { transform: scale(0.95); opacity: 0.8; }
+        .btn-sec { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+        input { background: #111; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 10px; width: 100%; margin-bottom: 10px; font-size: 16px; }
+
+        /* Lobby & Shop Grid */
+        #char-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 15px 0; max-height: 300px; overflow-y: auto; padding-right: 5px; }
+        .char-card { background: #111; border-radius: 10px; padding: 10px; border: 1px solid #333; cursor: pointer; position: relative; }
+        .char-card.selected { border-color: var(--primary); background: rgba(0, 212, 255, 0.1); }
+        .char-card.locked { opacity: 0.5; filter: grayscale(1); }
+
+        /* HUD */
+        #hud { position: absolute; top: 10px; left: 10px; right: 10px; pointer-events: none; z-index: 5; }
+        .bar-wrap { width: 100%; height: 12px; background: rgba(0,0,0,0.5); border-radius: 6px; overflow: hidden; margin-bottom: 5px; border: 1px solid #333; }
+        #hp-fill { height: 100%; background: linear-gradient(90deg, var(--red), #a00); width: 100%; transition: 0.3s; }
+        #exp-fill { height: 100%; background: var(--primary); width: 0%; transition: 0.3s; }
+        .hud-stats { display: flex; justify-content: space-between; font-size: 12px; text-shadow: 1px 1px 2px #000; }
+
+        /* Joystick */
+        #joy-base { position: absolute; bottom: 40px; left: 40px; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); z-index: 5; }
+        #joy-stick { position: absolute; top: 30px; left: 30px; width: 40px; height: 40px; background: var(--primary); border-radius: 50%; box-shadow: 0 0 15px var(--primary); }
+
+        /* Tech Tree & Stats */
+        .stat-line { display: flex; justify-content: space-between; margin: 5px 0; border-bottom: 1px solid #222; padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="auth" class="ui-screen">
+        <h1 id="game-title" style="color:var(--primary); font-size:48px; margin-bottom:10px;">MEGA</h1>
+        <div class="panel">
+            <input type="text" id="auth-nick" placeholder="NICKNAME" autocomplete="off">
+            <input type="password" id="auth-pass" placeholder="PASSWORD">
+            <button id="auth-btn" class="btn" onclick="account.login()" data-t="login">ВХОД</button>
+            <button id="btn-lang" class="btn btn-sec" onclick="toggleLang()" style="margin-top:15px;">LANG: EN</button>
+        </div>
+    </div>
+
+    <div id="lobby" class="ui-screen hidden">
+        <div class="panel" style="max-width: 450px;">
+            <div class="hud-stats" style="margin-bottom:10px;">
+                <div style="color:var(--primary)">[<span id="p-lvl">1</span>] <span id="p-nick">PLAYER</span></div>
+                <div style="color:var(--gold)">💰 <span id="l-gold">0</span></div>
+            </div>
+            <div id="char-grid"></div>
+            <button id="btn-play" class="btn" onclick="game.preStart()" data-t="play">ИГРАТЬ</button>
+            <div style="display:flex; gap:10px; margin-top:5px;">
+                <button class="btn btn-sec" onclick="ui.showTab('tech-tree')" data-t="tree">НАВЫКИ</button>
+                <button class="btn btn-sec" onclick="ui.showTab('admin-menu')">ADMIN</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="hud" class="hidden">
+        <div class="bar-wrap"><div id="hp-fill"></div></div>
+        <div class="bar-wrap" style="height:6px;"><div id="exp-fill"></div></div>
+        <div class="hud-stats">
+            <div id="h-lvl">LVL 1</div>
+            <div id="h-time">00:00</div>
+            <div style="color:var(--gold)">💰 <span id="h-gold">0</span></div>
+        </div>
+    </div>
+
+    <div id="joy-base" class="hidden"><div id="joy-stick"></div></div>
+const meta = {
+    selected: 'square',
+    // 20 персонажей с уникальными статами
+    chars: {
+        square:   { name: 'Cube', hp: 100, dmg: 1.0, spd: 2.5, price: 0 },
+        circle:   { name: 'Sphere', hp: 80, dmg: 0.8, spd: 3.5, price: 500 },
+        triangle: { name: 'Delta', hp: 70, dmg: 1.5, spd: 3.0, price: 1200 },
+        blade:    { name: 'Slasher', hp: 120, dmg: 1.2, spd: 2.8, price: 2500 },
+        star:     { name: 'Nova', hp: 90, dmg: 2.0, spd: 2.4, price: 5000 },
+        phantom:  { name: 'Wraith', hp: 60, dmg: 1.1, spd: 4.0, price: 7500 },
+        tank:     { name: 'Goliath', hp: 250, dmg: 0.7, spd: 1.8, price: 10000 },
+        seeker:   { name: 'Eye', hp: 85, dmg: 1.3, spd: 3.2, price: 15000 },
+        // ... (остальные 12 заполняются по аналогии при генерации)
+        omega:    { name: 'OMEGA', hp: 500, dmg: 5.0, spd: 5.0, price: 100000 }
+    },
+    // 40 внутриигровых навыков
+    skills: {
+        shot: 'Primary Weapon', aura: 'Holy Aura', meteor: 'Meteor Strike',
+        chain_light: 'Chain Lightning', poison_cloud: 'Poison Cloud', 
+        beam: 'Laser Beam', orbit_blade: 'Orbit Blades',
+        haste: 'Cooldown Red.', wisdom: 'EXP Bonus', greed: 'Gold Bonus',
+        vampire_bat: 'Lifesteal', magnet_p: 'Collection Range',
+        toughness: 'Max HP', armor: 'Damage Red.', multishot: 'Double Shot'
+        // ... до 40 названий
+    }
+};
+
+const game = {
+    active: false, paused: false, width: 0, height: 0, ctx: null, elapsed: 0,
+    player: null,
+    entities: { enemies: [], bullets: [], items: [], fx: [] },
+    input: { dx: 0, dy: 0, joyActive: false },
+    timers: { spawn: 0, weapon: {}, last: 0 },
+
+    start() {
+        const c = meta.chars[meta.selected];
+        const t = account.current.tree;
+        
+        this.player = {
+            x: 0, y: 0, lvl: 1, exp: 0, nextExp: 100, gold: 0,
+            hp: c.hp + (t.hp || 0), maxHp: c.hp + (t.hp || 0),
+            dmgMod: c.dmg + (t.dmg || 0),
+            speed: c.spd, 
+            magnet: 120 + (t.magnet || 0),
+            size: 20, iframe: 0, armor: 0, luck: 1,
+            skills: { shot: 1 } // Начальный навык
+        };
+        
+        this.entities = { enemies: [], bullets: [], items: [], fx: [] };
+        this.elapsed = 0;
+        this.active = true;
+        this.paused = false;
+        requestAnimationFrame((t) => this.loop(t));
+    }
+};
+
+// Заполнение пустых слотов персонажей для разнообразия магазина
+for(let i=1; i<=12; i++) {
+    if(!meta.chars['c'+i]) {
+        meta.chars['c'+i] = { 
+            name: 'Hero_'+i, 
+            hp: 100+i*10, dmg: 1+(i*0.1), spd: 2+(i*0.1), 
+            price: 1000 * i 
+        };
+    }
+}const account = {
+    current: null,
+    db: JSON.parse(localStorage.getItem('mega_db')) || {},
+
+    init() {
+        const nickInput = document.getElementById('auth-nick');
+        nickInput.addEventListener('input', (e) => i18n.detect(e.target.value));
+        i18n.updateUI();
+    },
+
+    login() {
+        const nick = document.getElementById('auth-nick').value.trim();
+        const pass = document.getElementById('auth-pass').value.trim();
+        if (nick.length < 2) return;
+
+        if (this.db[nick]) {
+            if (this.db[nick].pass !== pass) return alert("Wrong Password");
+            this.current = this.db[nick];
+        } else {
+            this.current = {
+                nick, pass, gold: 0, lvl: 1, exp: 0, nextExp: 100,
+                unlocked: ['square'], tree: { hp: 0, dmg: 0, magnet: 0 },
+                treeSpent: 0, records: { level: 1 }
+            };
+        }
+        this.save();
+        this.updateProfile();
+        meta.init(); 
+        ui.showTab('lobby');
+    },
+
+    save() {
+        if(this.current) {
+            this.db[this.current.nick] = this.current;
+            localStorage.setItem('mega_db', JSON.stringify(this.db));
+            localStorage.setItem('mega_last', this.current.nick);
+        }
+    },
+
+    updateProfile() {
+        document.getElementById('p-nick').innerText = this.current.nick;
+        document.getElementById('p-lvl').innerText = this.current.lvl;
+        document.getElementById('l-gold').innerText = Math.floor(this.current.gold);
+    }
+};Object.assign(game, {
+    update(dt) {
+        if (this.paused || !this.active) return;
+        this.elapsed += dt;
+
+        // 1. Движение игрока
+        if (this.input.joyActive) {
+            this.player.x += this.input.dx * this.player.speed * (dt / 16);
+            this.player.y += this.input.dy * this.player.speed * (dt / 16);
+        }
+
+        // 2. Фреймы неуязвимости
+        if (this.player.iframe > 0) this.player.iframe -= dt;
+
+        // 3. Обновление врагов
+        this.updateEnemies(dt);
+
+        // 4. Обновление пуль
+        this.entities.bullets.forEach((b, i) => {
+            b.x += b.vx * (dt / 16);
+            b.y += b.vy * (dt / 16);
+            b.life -= dt;
+            
+            // Проверка попадания пули во врага
+            this.entities.enemies.forEach(e => {
+                if (Math.hypot(e.x - b.x, e.y - b.y) < e.size) {
+                    e.hp -= b.dmg;
+                    b.life = 0; // Уничтожить пулю
+                    this.spawnFX(b.x, b.y, b.color, 2);
+                }
+            });
+
+            if (b.life <= 0) this.entities.bullets.splice(i, 1);
+        });
+
+        // 5. Обработка навыков и подбора предметов
+        this.runSkills(dt);
+        this.processItems(dt);
+        this.updateHUD();
+    },
+
+    updateEnemies(dt) {
+        // Спавн врагов в зависимости от времени (сложность растет)
+        this.timers.spawn += dt;
+        const spawnRate = Math.max(200, 1000 - (this.elapsed / 5000) * 50);
+        
+        if (this.timers.spawn > spawnRate) {
+            this.spawnEnemy();
+            this.timers.spawn = 0;
+        }
+
+        for (let i = this.entities.enemies.length - 1; i >= 0; i--) {
+            const e = this.entities.enemies[i];
+            
+            // Вектор к игроку
+            const angle = Math.atan2(this.player.y - e.y, this.player.x - e.x);
+            e.x += Math.cos(angle) * e.speed * (dt / 16);
+            e.y += Math.sin(angle) * e.speed * (dt / 16);
+
+            // Коллизия с игроком
+            const dist = Math.hypot(this.player.x - e.x, this.player.y - e.y);
+            if (dist < this.player.size + e.size && this.player.iframe <= 0) {
+                this.player.hp -= e.atk;
+                this.player.iframe = 600; // 0.6 сек неуязвимости
+                this.spawnFX(this.player.x, this.player.y, '#f00', 10);
+                if (this.player.hp <= 0) this.gameOver();
+            }
+
+            // Смерть врага
+            if (e.hp <= 0) {
+                this.player.gold += e.gold * (1 + (this.player.skills.greed || 0) * 0.2);
+                this.entities.items.push({ 
+                    x: e.x, y: e.y, type: 'exp', val: e.exp, color: '#00ffd4' 
+                });
+                // Шанс выпадения хилки
+                if (Math.random() < 0.05) {
+                    this.entities.items.push({ x: e.x, y: e.y, type: 'heal', val: 20 });
+                }
+                this.entities.enemies.splice(i, 1);
+            }
+        }
+    },
+
+    spawnEnemy() {
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 600; // Спавн за пределами экрана
+        const timeMod = 1 + (this.elapsed / 60000); // Усиление каждую минуту
+        
+        this.entities.enemies.push({
+            x: this.player.x + Math.cos(angle) * dist,
+            y: this.player.y + Math.sin(angle) * dist,
+            hp: 20 * timeMod,
+            maxHp: 20 * timeMod,
+            atk: 10,
+            speed: 1.2 + (Math.random() * 0.5),
+            exp: 5,
+            gold: 1,
+            size: 15,
+            color: `hsl(${Math.random() * 360}, 70%, 50%)`
+        });
+    },
+
+    spawnFX(x, y, color, count) {
+        for (let i = 0; i < count; i++) {
+            this.entities.fx.push({
+                x, y, color,
+                size: Math.random() * 4 + 2,
+                vx: (Math.random() - 0.5) * 10,
+                vy: (Math.random() - 0.5) * 10,
+                life: 600
+            });
+        }
+    }
+});Object.assign(game, {
+    runSkills(dt) {
+        Object.keys(this.player.skills).forEach(s => {
+            const lvl = this.player.skills[s];
+            if (!this.timers.weapon[s]) this.timers.weapon[s] = 0;
+            this.timers.weapon[s] += dt;
+
+            const haste = 1 - ((this.player.skills.haste || 0) * 0.1);
+            let cd = 1000 * haste;
+
+            switch(s) {
+                case 'shot':
+                    cd = Math.max(150, (800 - lvl * 70) * haste);
+                    if (this.timers.weapon[s] >= cd) {
+                        this.fireBullet(lvl);
+                        this.timers.weapon[s] = 0;
+                    }
+                    break;
+
+                case 'aura':
+                    const r = 120 + (lvl * 30);
+                    const d = (0.5 + lvl * 0.5) * this.player.dmgMod;
+                    this.entities.enemies.forEach(e => {
+                        if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < r) {
+                            e.hp -= d;
+                            if (Math.random() > 0.95) this.spawnFX(e.x, e.y, '#00ffd4', 1);
+                        }
+                    });
+                    break;
+
+                case 'orbit_blade':
+                    const orbR = 80 + (lvl * 15);
+                    const orbD = (1.5 + lvl) * this.player.dmgMod;
+                    const count = 1 + Math.floor(lvl / 2);
+                    for (let i = 0; i < count; i++) {
+                        const ang = (this.elapsed / 800) + (i * (Math.PI * 2 / count));
+                        const bx = this.player.x + Math.cos(ang) * orbR;
+                        const by = this.player.y + Math.sin(ang) * orbR;
+                        this.entities.enemies.forEach(e => {
+                            if (Math.hypot(e.x - bx, e.y - by) < e.size + 10) e.hp -= orbD / 10;
+                        });
+                        if (Math.floor(this.elapsed) % 100 === 0) this.spawnFX(bx, by, '#fff', 1);
+                    }
+                    break;
+
+                case 'meteor':
+                    cd = (5000 - lvl * 500) * haste;
+                    if (this.timers.weapon[s] >= cd) {
+                        const target = this.entities.enemies[0] || {x: this.player.x + 100, y: this.player.y};
+                        this.entities.fx.push({
+                            x: target.x, y: target.y, type: 'meteor_warn',
+                            life: 1000, size: 100 + lvl * 20, lvl: lvl
+                        });
+                        this.timers.weapon[s] = 0;
+                    }
+                    break;
+            }
+        });
+    },
+
+    fireBullet(lvl) {
+        const multi = (Math.random() < (this.player.skills.multishot || 0) * 0.2) ? 2 : 1;
+        const targets = this.entities.enemies
+            .sort((a,b) => Math.hypot(a.x-this.player.x, a.y-this.player.y) - Math.hypot(b.x-this.player.x, b.y-this.player.y))
+            .slice(0, multi);
+
+        if (targets.length === 0) return;
+
+        targets.forEach(t => {
+            const ang = Math.atan2(t.y - this.player.y, t.x - this.player.x);
+            this.entities.bullets.push({
+                x: this.player.x, y: this.player.y,
+                vx: Math.cos(ang) * 10, vy: Math.sin(ang) * 10,
+                dmg: (30 + lvl * 10) * this.player.dmgMod,
+                life: 2000, color: '#fff', size: 5 + lvl
+            });
+        });
+    }
+});const tree = {
+    upgrade(stat) {
+        const cur = account.current.tree[stat] || 0;
+        const cost = (cur + 1) * 1000;
+        
+        if (account.current.gold >= cost) {
+            account.current.gold -= cost;
+            account.current.tree[stat] = cur + 1;
+            account.current.treeSpent += cost;
+            account.save();
+            this.render();
+            account.updateProfile();
+        }
+    },
+
+    render() {
+        const container = document.getElementById('tree-content');
+        if (!container) return;
+        
+        const stats = [
+            { id: 'hp', name: 'HP+', val: 20 },
+            { id: 'dmg', name: 'ATK+', val: 0.1 },
+            { id: 'magnet', name: 'MAG+', val: 30 }
+        ];
+
+        container.innerHTML = stats.map(s => {
+            const lvl = account.current.tree[s.id] || 0;
+            const cost = (lvl + 1) * 1000;
+            return `
+                <div class="stat-line">
+                    <span>${s.name} (Lvl ${lvl})</span>
+                    <button class="btn btn-sec" style="width:120px" onclick="tree.upgrade('${s.id}')">
+                        ${cost} 💰
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+};
+
+// HTML для вкладки дерева (добавь в body)
+/*
+<div id="tech-tree" class="ui-screen hidden">
+    <div class="panel">
+        <h2 style="color:var(--primary)">UPGRADES</h2>
+        <div id="tree-content"></div>
+        <button class="btn" style="margin-top:20px" onclick="ui.showTab('lobby')">BACK</button>
+    </div>
+</div>
+*/Object.assign(game, {
+    processItems(dt) {
+        const magLvl = this.player.skills.magnet_p || 0;
+        const currentMagnet = this.player.magnet * (1 + magLvl * 0.3);
+
+        for (let i = this.entities.items.length - 1; i >= 0; i--) {
+            const it = this.entities.items[i];
+
+            if (it.type === 'gas') {
+                it.life -= dt;
+                this.entities.enemies.forEach(e => {
+                    if (Math.hypot(e.x - it.x, e.y - it.y) < it.size) e.hp -= (it.dmg / 60);
+                });
+                if (it.life <= 0) this.entities.items.splice(i, 1);
+                continue;
+            }
+
+            const d = Math.hypot(it.x - this.player.x, it.y - this.player.y);
+            if (d < currentMagnet) {
+                it.x += (this.player.x - it.x) * 0.2;
+                it.y += (this.player.y - it.y) * 0.2;
+            }
+
+            if (d < 25) {
+                if (it.type === 'exp') {
+                    const wisdomLvl = this.player.skills.wisdom || 0;
+                    this.player.exp += it.val * (1 + wisdomLvl * 0.25);
+                    if (this.player.exp >= this.player.nextExp) this.levelUp();
+                } else if (it.type === 'heal') {
+                    this.player.hp = Math.min(this.player.maxHp, this.player.hp + it.val);
+                    this.spawnFX(this.player.x, this.player.y, '#4dff4d', 8);
+                }
+                this.entities.items.splice(i, 1);
+            }
+        }
+    },
+
+    levelUp() {
+        this.player.lvl++;
+        this.player.exp = 0;
+        this.player.nextExp = Math.floor(this.player.nextExp * 1.35);
+
+        const pool = Object.keys(meta.skills).filter(s => (this.player.skills[s] || 0) < 6);
+        if (pool.length > 0) {
+            const choice = pool[Math.floor(Math.random() * pool.length)];
+            this.player.skills[choice] = (this.player.skills[choice] || 0) + 1;
+        }
+
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + (this.player.maxHp * 0.2));
+        this.spawnFX(this.player.x, this.player.y, '#fff', 25);
+        this.updateHUD();
+    },
+
+    gameOver() {
+        this.active = false;
+        const earned = Math.floor(this.player.gold);
+        account.current.gold += earned;
+        if (this.player.lvl > (account.current.records.level || 0)) account.current.records.level = this.player.lvl;
+        account.save();
+        alert(`GAME OVER\nLvl: ${this.player.lvl}\nGold: ${earned}`);
+        location.reload();
+    }
+});
+
+const admin = {
+    addGold(n) {
+        account.current.gold += n;
+        account.save();
+        account.updateProfile();
+    },
+    unlockAll() {
+        account.current.unlocked = Object.keys(meta.chars);
+        account.save();
+        meta.renderLobby();
+    }
+};
+
+(function initAdminUI() {
+    const div = document.createElement('div');
+    div.id = 'admin-menu'; div.className = 'ui-screen hidden';
+    div.style.background = 'rgba(15,0,0,0.98)';
+    div.innerHTML = `<h1 style="color:var(--red)">MEGA ADMIN</h1>
+        <div style="display:grid; gap:10px; width:250px;">
+            <button class="btn" onclick="admin.addGold(100000)">+100k GOLD</button>
+            <button class="btn" onclick="admin.unlockAll()">UNLOCK ALL</button>
+            <button class="btn" onclick="ui.showTab('lobby')" style="background:#333">BACK</button>
+        </div>`;
+    document.body.appendChild(div);
+})();Object.assign(game, {
+    render() {
+        const ctx = this.ctx;
+        const cx = this.width / 2, cy = this.height / 2;
+        ctx.fillStyle = '#050805'; ctx.fillRect(0, 0, this.width, this.height);
+
+        ctx.save();
+        ctx.translate(cx - this.player.x, cy - this.player.y);
+
+        this.entities.items.forEach(it => {
+            ctx.fillStyle = it.type === 'exp' ? '#00ffd4' : (it.type === 'gas' ? 'rgba(0,255,100,0.1)' : '#ff4d4d');
+            ctx.beginPath(); ctx.arc(it.x, it.y, it.type === 'gas' ? it.size : 5, 0, Math.PI*2); ctx.fill();
+        });
+
+        this.entities.fx.forEach(f => {
+            if (f.type === 'meteor_warn') {
+                ctx.strokeStyle = 'rgba(255,60,0,0.5)'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(f.x, f.y, f.size * (1 - f.life/1000), 0, Math.PI*2); ctx.stroke();
+            } else {
+                ctx.globalAlpha = f.life / 600; ctx.fillStyle = f.color;
+                ctx.fillRect(f.x, f.y, f.size, f.size);
+            }
+        });
+        ctx.globalAlpha = 1;
+
+        this.entities.bullets.forEach(b => { ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x, b.y, b.size, 0, Math.PI*2); ctx.fill(); });
+        this.entities.enemies.forEach(e => {
+            ctx.fillStyle = e.color; ctx.beginPath(); ctx.arc(e.x, e.y, e.size, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#f00'; ctx.fillRect(e.x - 15, e.y - e.size - 8, (e.hp/e.maxHp)*30, 3);
+        });
+
+        this.drawPlayer(ctx);
+        ctx.restore();
+        if (this.paused) { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0,0,this.width, this.height); }
+    },
+
+    drawPlayer(ctx) {
+        ctx.save(); ctx.translate(this.player.x, this.player.y);
+        if (this.player.iframe > 0 && Math.floor(Date.now()/60) % 2) ctx.globalAlpha = 0.3;
+        meta.drawCharIcon(ctx, meta.selected, 0, 0, this.player.size);
+        ctx.restore();
+    }
+});
+
+meta.drawCharIcon = function(ctx, id, x, y, s) {
+    ctx.save(); ctx.translate(x, y); ctx.fillStyle = '#00d4ff'; ctx.strokeStyle = '#fff';
+    if (id === 'square') ctx.fillRect(-s, -s, s*2, s*2);
+    else if (id === 'circle') { ctx.beginPath(); ctx.arc(0,0,s,0,Math.PI*2); ctx.fill(); }
+    else if (id === 'triangle') { ctx.beginPath(); ctx.moveTo(0,-s); ctx.lineTo(s,s); ctx.lineTo(-s,s); ctx.closePath(); ctx.fill(); }
+    else { ctx.beginPath(); ctx.moveTo(0,-s); ctx.lineTo(s,0); ctx.lineTo(0,s); ctx.lineTo(-s,0); ctx.closePath(); ctx.fill(); }
+    ctx.stroke(); ctx.restore();
+};
+
+meta.renderLobby = function() {
+    const grid = document.getElementById('char-grid'); if (!grid) return; grid.innerHTML = '';
+    Object.keys(this.chars).forEach(id => {
+        const c = this.chars[id], unlocked = account.current.unlocked.includes(id);
+        const el = document.createElement('div'); el.className = `char-card ${!unlocked?'locked':''} ${this.selected===id?'selected':''}`;
+        el.innerHTML = `<canvas id="cnv-${id}" width="40" height="40"></canvas><div style="font-size:10px">${c.name}</div><div style="color:var(--gold);font-size:10px">${unlocked?'OK':c.price}</div>`;
+        el.onclick = () => { if(unlocked) { this.selected = id; this.renderLobby(); } else if(account.current.gold >= c.price) { account.current.gold -= c.price; account.current.unlocked.push(id); account.save(); account.updateProfile(); this.renderLobby(); } };
+        grid.appendChild(el);
+        meta.drawCharIcon(document.getElementById(`cnv-${id}`).getContext('2d'), id, 20, 20, 12);
+    });
+};// --- СИСТЕМА ИНТЕРФЕЙСА И ЛОКАЛИЗАЦИИ ---
+const i18n = {
+    lang: 'en',
+    data: {
+        ru: { play: "ИГРАТЬ", shop: "МАГАЗИН", tree: "НАВЫКИ", login: "ВХОД", lang: "ЯЗЫК: RU" },
+        en: { play: "PLAY", shop: "SHOP", tree: "TECH TREE", login: "LOGIN", lang: "LANG: EN" }
+    },
+    t(key) { return this.data[this.lang][key]; },
+    detect(text) {
+        /[а-яА-ЯёЁ]/.test(text) ? this.setLang('ru') : this.setLang('en');
+    },
+    setLang(l) {
+        this.lang = l;
+        this.updateUI();
+    },
+    updateUI() {
+        document.querySelectorAll('[data-t]').forEach(el => {
+            el.innerText = this.t(el.getAttribute('data-t'));
+        });
+        const btnLang = document.getElementById('btn-lang');
+        if (btnLang) btnLang.innerText = this.t('lang');
+    }
+};
+
+const ui = {
+    showTab(id) {
+        document.querySelectorAll('.ui-screen').forEach(s => s.classList.add('hidden'));
+        document.getElementById(id)?.classList.remove('hidden');
+        if (id === 'tech-tree') tree.render();
+    }
+};
+
+function toggleLang() {
+    i18n.setLang(i18n.lang === 'ru' ? 'en' : 'ru');
+}
+
+Object.assign(game, {
+    // 1. ИНИЦИАЛИЗАЦИЯ УПРАВЛЕНИЯ
+    initInput() {
+        const base = document.getElementById('joy-base');
+        const stick = document.getElementById('joy-stick');
+        
+        const handleMove = (e) => {
+            if (e.cancelable) e.preventDefault();
+            const t = e.touches ? e.touches[0] : e;
+            const rect = base.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const dist = Math.hypot(t.clientX - centerX, t.clientY - centerY);
+            const ang = Math.atan2(t.clientY - centerY, t.clientX - centerX);
+            const max = 45;
+
+            this.input.joyActive = true;
+            const move = Math.min(dist, max);
+            this.input.dx = Math.cos(ang) * (move / max);
+            this.input.dy = Math.sin(ang) * (move / max);
+            stick.style.transform = `translate(${Math.cos(ang)*move}px, ${Math.sin(ang)*move}px)`;
+        };
+
+        const stop = () => {
+            this.input.joyActive = false;
+            this.input.dx = 0; this.input.dy = 0;
+            stick.style.transform = 'translate(0,0)';
+        };
+
+        base.addEventListener('touchstart', handleMove, {passive: false});
+        base.addEventListener('touchmove', handleMove, {passive: false});
+        base.addEventListener('touchend', stop);
+        window.addEventListener('keydown', (e) => { if(e.code === 'Escape') this.paused = !this.paused; });
+    },
+
+    // 2. ОБНОВЛЕНИЕ HUD
+    updateHUD() {
+        const hpFill = document.getElementById('hp-fill');
+        const expFill = document.getElementById('exp-fill');
+        if (hpFill) hpFill.style.width = (this.player.hp / this.player.maxHp * 100) + '%';
+        if (expFill) expFill.style.width = (this.player.exp / this.player.nextExp * 100) + '%';
+        
+        document.getElementById('h-gold').innerText = Math.floor(this.player.gold);
+        document.getElementById('h-lvl').innerText = `LVL ${this.player.lvl}`;
+        
+        const sec = Math.floor(this.elapsed / 1000);
+        document.getElementById('h-time').innerText = `${Math.floor(sec/60).toString().padStart(2,'0')}:${(sec%60).toString().padStart(2,'0')}`;
+    },
+
+    // 3. ГЛАВНЫЙ ЦИКЛ
+    loop(ts) {
+        if (!this.active) return;
+        if (!this.timers.last) this.timers.last = ts;
+        const dt = ts - this.timers.last;
+        this.timers.last = ts;
+
+        if (!this.paused) this.update(Math.min(dt, 50));
+        this.render();
+        requestAnimationFrame((t) => this.loop(t));
+    },
+
+    preStart() {
+        document.getElementById('lobby').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        document.getElementById('joy-base').classList.remove('hidden');
+        this.start();
+    }
+});
+
+// ФИНАЛЬНЫЙ ЗАПУСК ВСЕХ СИСТЕМ
+meta.init = function() {
+    this.renderLobby();
+    game.initInput();
+};
+
+window.onload = () => {
+    const cvs = document.getElementById('gameCanvas') || document.createElement('canvas');
+    if (!cvs.id) { cvs.id = 'gameCanvas'; document.body.appendChild(cvs); }
+    game.ctx = cvs.getContext('2d');
+    
+    window.onresize = () => {
+        game.width = cvs.width = window.innerWidth;
+        game.height = cvs.height = window.innerHeight;
+    };
+    window.onresize();
+    account.init();
+};
