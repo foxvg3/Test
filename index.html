@@ -2,360 +2,749 @@
 <html lang="ru" translate="no">
 <head>
     <meta charset="UTF-8">
-    <meta name="google" content="notranslate">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Survivor.io Mega Build V6.1</title>
+    <title>Shape Survivor Online - V9</title>
     <style>
-        body { 
-            margin: 0; background: #020202; overflow: hidden; 
-            font-family: 'Segoe UI', Tahoma, sans-serif; touch-action: none; 
-            color: white; user-select: none; -webkit-tap-highlight-color: transparent;
+        :root { 
+            --primary: #00d4ff; --gold: #ffd700; --bg: #050805; 
+            --panel: rgba(20, 25, 20, 0.98); --red: #ff4d4d;
         }
+        body { margin: 0; background: var(--bg); overflow: hidden; font-family: 'Verdana', sans-serif; touch-action: none; color: white; user-select: none; }
         canvas { display: block; position: absolute; inset: 0; z-index: 1; }
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        .hud-container { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-        #exp-container { 
-            width: 100%; height: 14px; background: rgba(255, 255, 255, 0.05); 
-            border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 7px; overflow: hidden; 
+
+        /* UI Экраны */
+        .ui-screen { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; background: radial-gradient(circle at center, #1a201a 0%, #000 100%); overflow-y: auto; padding: 20px; box-sizing: border-box; }
+        .hidden { display: none !important; }
+
+        /* Шапка профиля (Level & XP) */
+        .profile-header { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.7); padding: 12px; border-radius: 10px; border-left: 4px solid var(--primary); font-size: 13px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .profile-header b { color: var(--primary); display: block; margin-bottom: 3px; font-size: 15px; }
+        .xp-mini-bar { width: 100px; height: 4px; background: #222; margin-top: 5px; border-radius: 2px; }
+        #xp-mini-fill { height: 100%; background: var(--primary); width: 0%; transition: 0.3s; }
+        
+        /* Таблицы лидеров */
+        .leaderboard-table { width: 100%; max-width: 500px; border-collapse: collapse; margin-top: 15px; background: rgba(255,255,255,0.02); border-radius: 10px; overflow: hidden; }
+        .leaderboard-table th { background: #111; color: var(--gold); padding: 12px; text-align: left; font-size: 14px; }
+        .leaderboard-table td { padding: 10px; border-bottom: 1px solid #222; font-size: 13px; }
+        .leaderboard-table tr:nth-child(even) { background: rgba(255,255,255,0.01); }
+
+        /* Дерево навыков */
+        .skill-tree { display: grid; grid-template-columns: 1fr; gap: 12px; width: 100%; max-width: 450px; margin-top: 20px; }
+        .tree-node { background: #151815; border: 1px solid #333; padding: 15px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; transition: 0.2s; }
+        .tree-node.available { border-color: var(--primary); box-shadow: 0 0 10px rgba(0,212,255,0.1); }
+        .tree-node.maxed { border-color: var(--gold); background: rgba(255,215,0,0.05); }
+        .node-info b { display: block; color: #eee; font-size: 14px; }
+        .node-info span { font-size: 11px; color: #888; }
+
+        /* Авторизация */
+        .auth-box { background: var(--panel); padding: 30px; border-radius: 20px; border: 1px solid #333; display: flex; flex-direction: column; gap: 15px; width: 300px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+        input { background: #000; border: 1px solid #444; color: white; padding: 14px; border-radius: 10px; outline: none; transition: 0.3s; }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 8px var(--primary); }
+
+        /* HUD */
+        #hud { position: fixed; top: 15px; left: 15px; z-index: 500; pointer-events: none; }
+        .hp-cont { width: 200px; height: 14px; background: #000; border: 2px solid #333; border-radius: 7px; overflow: hidden; }
+        #hp-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #f00, #ff4d4d); transition: 0.2s; }
+        #exp-line { position: fixed; top: 0; left: 0; width: 100%; height: 5px; background: #111; z-index: 1100; }
+        #exp-fill { height: 100%; width: 0%; background: #00ffd4; box-shadow: 0 0 10px #00ffd4; }
+
+        /* Кнопки */
+        .btn { background: linear-gradient(180deg, var(--primary) 0%, #008cb3 100%); color: #000; padding: 18px; border-radius: 15px; font-weight: 900; cursor: pointer; border: none; text-transform: uppercase; letter-spacing: 1px; transition: 0.2s; }
+        .btn:active { transform: scale(0.96); }
+        .btn-sec { background: #222; color: #fff; padding: 12px 20px; border-radius: 10px; border: 1px solid #444; cursor: pointer; font-size: 12px; }
+        
+        /* Джойстик */
+        #joy-base { position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%); width: 120px; height: 120px; background: rgba(255,255,255,0.03); border: 2px solid rgba(255,255,255,0.1); border-radius: 50%; z-index: 100; }
+        #joy-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: var(--primary); border-radius: 50%; box-shadow: 0 0 15px var(--primary); }
+
+        /* Анимация тряски */
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            40% { transform: translate(3px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            80% { transform: translate(3px, 1px) rotate(-1deg); }
+            100% { transform: translate(1px, -2px) rotate(0deg); }
         }
-        #exp-bar { 
-            width: 0%; height: 100%; background: linear-gradient(90deg, #00d4ff, #005f7a); 
-            box-shadow: 0 0 15px rgba(0, 212, 255, 0.5); transition: width 0.3s ease; 
-        }
-        #hp-container { 
-            width: 200px; height: 24px; background: #111; border: 2px solid #333; 
-            border-radius: 12px; overflow: hidden; position: relative; 
-        }
-        #hp-bar { width: 100%; height: 100%; background: linear-gradient(180deg, #ff4d4d, #8b0000); }
-        #hp-text { 
-            position: absolute; width: 100%; text-align: center; font-size: 13px; 
-            font-weight: 900; line-height: 24px; color: white; text-shadow: 1px 1px 3px black; 
-        }
-        .stats-row { display: flex; align-items: center; gap: 25px; font-size: 20px; font-weight: 800; }
-        #joystick-wrapper { 
-            position: absolute; bottom: 12%; left: 50%; transform: translateX(-50%); 
-            width: 160px; height: 160px; z-index: 100; pointer-events: all; 
-        }
-        #joystick-base { 
-            width: 100%; height: 100%; background: rgba(255,255,255,0.05); 
-            border: 2px solid rgba(255, 255, 255, 0.1); border-radius: 50%; 
-            display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); 
-        }
-        #joystick-stick { 
-            width: 65px; height: 65px; background: radial-gradient(circle, #00d4ff, #005f7a); 
-            border-radius: 50%; box-shadow: 0 0 30px #00d4ff; 
-        }
-        #screen-overlay { 
-            position: fixed; inset: 0; background: rgba(0,0,0,0.9); 
-            z-index: 1000; display: flex; align-items: center; justify-content: center; 
-        }
-        .menu-card { 
-            background: #111; padding: 50px; border-radius: 40px; border: 1px solid #00d4ff; 
-            text-align: center; width: 90%; max-width: 340px; 
-        }
-        .play-btn { 
-            background: #00d4ff; color: #000; padding: 20px 60px; border-radius: 20px; 
-            font-weight: 900; cursor: pointer; margin-top: 40px; display: inline-block; pointer-events: all; 
-        }
-        #admin-panel { position: fixed; top: 120px; right: 20px; z-index: 500; pointer-events: all; display: flex; flex-direction: column; gap: 10px; }
-        .admin-btn { background: rgba(0,212,255,0.1); border: 1px solid #00d4ff; color: #00d4ff; padding: 10px; border-radius: 10px; cursor: pointer; }
+        .shake-screen { animation: shake 0.2s; }
     </style>
 </head>
-<body>
-<div id="ui-layer" style="display:none">
-    <div class="hud-container">
-        <div id="exp-container"><div id="exp-bar"></div></div>
-        <div id="hp-container"><div id="hp-bar"></div><div id="hp-text"></div></div>
-        <div class="stats-row">
-            <span>💰 <span id="gold-val">0</span></span>
-            <span>⭐ <span id="lvl-val">1</span></span>
-            <span id="timer-val">00:00</span>
+<body id="main-body">
+
+<div id="exp-line"><div id="exp-fill"></div></div>
+
+<div id="auth-screen" class="ui-screen">
+    <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="color: var(--primary); font-size: 40px; margin: 0;">SHAPE V9</h1>
+        <p style="color: #666; font-size: 12px;">ACCOUNT SYSTEM & GLOBAL SKILLS</p>
+    </div>
+    <div class="auth-box">
+        <input type="text" id="auth-nick" placeholder="НИКНЕЙМ" maxlength="12">
+        <input type="password" id="auth-pass" placeholder="ПАРОЛЬ">
+        <button class="btn" onclick="account.login()">ВОЙТИ / СОЗДАТЬ</button>
+    </div>
+</div>
+
+<div id="lobby" class="ui-screen hidden">
+    <div class="profile-header">
+        <b id="p-nick">---</b>
+        <span>LVL: <span id="p-lvl">1</span></span>
+        <div class="xp-mini-bar"><div id="xp-mini-fill"></div></div>
+        <span style="font-size: 9px; color: #888;" id="p-exp-text">0/100 EXP</span>
+    </div>
+
+    <div style="margin-top: 80px; text-align: center;">
+        <div style="color: var(--gold); font-size: 24px; font-weight: bold; margin-bottom: 20px;">💰 <span id="l-gold">0</span></div>
+        
+        <div id="char-grid" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 25px;"></div>
+
+        <div style="display: flex; flex-direction: column; gap: 10px; width: 280px;">
+            <button class="btn" onclick="game.preStart('normal')">ВЫЖИВАНИЕ (30 МИН)</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <button class="btn" style="padding: 12px; font-size: 11px; background: #700; color: #fff;" onclick="game.preStart('endless')">БЕСКОНЕЧНЫЙ</button>
+                <button class="btn" style="padding: 12px; font-size: 11px; background: #505; color: #fff;" onclick="game.preStart('bossrush')">BOSS RUSH</button>
+            </div>
+            <button class="btn-sec" onclick="ui.showTab('skill-tree')">🧬 ДЕРЕВО НАВЫКОВ</button>
+            <button class="btn-sec" onclick="ui.showTab('leaderboard')">📊 ТАБЛИЦА ЛИДЕРОВ</button>
+            <button class="btn-sec" onclick="ui.showTab('achievements')">🏆 ДОСТИЖЕНИЯ</button>
         </div>
     </div>
 </div>
-<div id="admin-panel" style="display:none">
-    <button class="admin-btn" onclick="game.addGold(10000)">+10k GOLD</button>
+
+<div id="skill-tree" class="ui-screen hidden">
+    <h2 style="color: var(--primary)">ГЛОБАЛЬНАЯ ПРОКАЧКА</h2>
+    <p style="font-size: 11px; color: var(--gold)">Доступно очков улучшения: <span id="tree-points">0</span></p>
+    <div class="skill-tree" id="tree-container"></div>
+    <button class="btn" onclick="ui.showTab('lobby')" style="width: 200px; margin-top: 30px;">ВЕРНУТЬСЯ</button>
 </div>
-<div id="screen-overlay">
-    <div class="menu-card">
-        <h1 style="color:#00d4ff; font-size: 40px;">SURVIVOR</h1>
-        <div class="play-btn" onclick="game.start()">В БОЙ</div>
+
+<div id="leaderboard" class="ui-screen hidden">
+    <h2>ТАБЛИЦА ЛИДЕРОВ</h2>
+    <div style="display: flex; gap: 5px; margin-bottom: 15px;">
+        <button class="btn-sec" onclick="account.renderLB('level')">УРОВЕНЬ</button>
+        <button class="btn-sec" onclick="account.renderLB('endless')">БЕСКОНЕЧНЫЙ</button>
+        <button class="btn-sec" onclick="account.renderLB('bossrush')">BOSS RUSH</button>
+    </div>
+    <table class="leaderboard-table">
+        <thead><tr id="lb-head"></tr></thead>
+        <tbody id="lb-body"></tbody>
+    </table>
+    <button class="btn" onclick="ui.showTab('lobby')" style="width: 200px; margin-top: 20px;">НАЗАД</button>
+</div>
+
+<div id="hud" class="hidden">
+    <div class="hp-cont"><div id="hp-fill"></div></div>
+    <div style="font-size: 12px; margin-top: 5px; font-weight: bold;">
+        💰 <span id="h-gold">0</span> | ⭐ <span id="h-lvl">1</span> | ⏱️ <span id="h-time">00:00</span>
     </div>
 </div>
+
 <canvas id="gameCanvas"></canvas>
-<div id="joystick-wrapper">
-    <div id="joystick-base"><div id="joystick-stick"></div></div>
-</div>
+<div id="joy-base" class="hidden"><div id="joy-stick"></div></div>
+
 <script>
 "use strict";
-const game = {
-    active: false, width: 0, height: 0, startTime: 0, elapsed: 0,
-    player: { x: 0, y: 0, hp: 400, maxHp: 400, speed: 4.8, gold: 0, exp: 0, nextExp: 100, lvl: 1, size: 34, dmg: 70, pickRadius: 120 },
-    input: { joyActive: false, dx: 0, dy: 0, angle: 0 },
-    entities: { enemies: [], bullets: [], items: [], particles: [], damageTexts: [] },
-    timers: { spawn: 0, shoot: 0, lastFrame: 0 },
-    canvas: document.getElementById('gameCanvas'), ctx: null, bgTile: null,
-    init() {
-        this.ctx = this.canvas.getContext('2d', { alpha: false });
-        this.resize(); this.createBgTile();
-        window.addEventListener('resize', () => this.resize());
-        this.setupControls(); this.updateUI();
-    },resize() {
-        this.width = window.innerWidth;
-        this.height = window.innerHeight;
-        this.canvas.width = this.width;
-        this.canvas.height = this.height;
-    },
-    createBgTile() {
-        const size = 128;
-        const t = document.createElement('canvas');
-        t.width = size; t.height = size;
-        const tc = t.getContext('2d');
-        tc.fillStyle = '#111811';
-        tc.fillRect(0, 0, size, size);
-        tc.strokeStyle = '#0a0d0a';
-        tc.lineWidth = 2;
-        tc.strokeRect(0, 0, size, size);
-        tc.fillStyle = 'rgba(255,255,255,0.02)';
-        for(let i=0; i<10; i++) tc.fillRect(Math.random()*size, Math.random()*size, 2, 2);
-        this.bgTile = t;
-    },
-    start() {
-        document.getElementById('screen-overlay').style.display = 'none';
-        document.getElementById('ui-layer').style.display = 'block';
-        document.getElementById('admin-panel').style.display = 'flex';
-        this.active = true;
-        this.startTime = performance.now();
-        this.timers.lastFrame = performance.now();
-        this.updateUI();
-        requestAnimationFrame((t) => this.loop(t));
-    },
-    addGold(v) {
-        this.player.gold += v;
-        this.addDamageText(this.player.x, this.player.y - 40, `+${v} GOLD`, '#ffd700');
-        this.updateUI();
-    },
-    levelUp() {
-        this.player.lvl++;
-        this.player.exp = 0;
-        this.player.nextExp = Math.floor(this.player.nextExp * 1.7);
-        this.player.maxHp += 75;
-        this.player.hp = this.player.maxHp;
-        this.player.dmg += 30;
-        this.player.pickRadius += 10;
-        this.addDamageText(this.player.x, this.player.y - 60, "LEVEL UP!", "#00d4ff");
-        this.updateUI();
-    },
-    updateUI() {
-        const gVal = document.getElementById('gold-val');
-        const lVal = document.getElementById('lvl-val');
-        const hFill = document.getElementById('hp-bar');
-        const hText = document.getElementById('hp-text');
-        const eFill = document.getElementById('exp-bar');
-        if(gVal) gVal.innerText = Math.floor(this.player.gold);
-        if(lVal) lVal.innerText = this.player.lvl;
-        if(hFill) hFill.style.width = (this.player.hp / this.player.maxHp * 100) + '%';
-        if(hText) hText.innerText = `${Math.ceil(this.player.hp)} / ${this.player.maxHp}`;
-        if(eFill) eFill.style.width = (this.player.exp / this.player.nextExp * 100) + '%';
-    },
-    setupControls() {
-        const wrap = document.getElementById('joystick-wrapper');
-        const stick = document.getElementById('joystick-stick');
-        const base = document.getElementById('joystick-base');
-        const moveHandler = (e) => {
-            if(!this.active) return;
-            const touch = e.touches[0];
-            const rect = base.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const dx = touch.clientX - cx;
-            const dy = touch.clientY - cy;
-            const dist = Math.hypot(dx, dy);
-            const max = rect.width / 2;
-            const angle = Math.atan2(dy, dx);
-            this.input.joyActive = true;
-            const clampedDist = Math.min(dist, max);
-            this.input.dx = Math.cos(angle) * (clampedDist / max);
-            this.input.dy = Math.sin(angle) * (clampedDist / max);
-            stick.style.transform = `translate(${Math.cos(angle)*clampedDist}px, ${Math.sin(angle)*clampedDist}px)`;
-        };
-        wrap.addEventListener('touchstart', moveHandler);
-        wrap.addEventListener('touchmove', (e) => { e.preventDefault(); moveHandler(e); }, { passive: false });
-        const stopHandler = () => {
-            this.input.joyActive = false;
-            this.input.dx = 0; this.input.dy = 0;
-            stick.style.transform = `translate(0,0)`;
-        };
-        wrap.addEventListener('touchend', stopHandler);
-        wrap.addEventListener('touchcancel', stopHandler);
-    },
-    addDamageText(x, y, text, color) {
-        this.entities.damageTexts.push({ x, y, text, color, life: 1.0, vy: -2.5 });
-    },
-    loop(now) {
-        if (!this.active) return;
-        const dt = now - this.timers.lastFrame;
-        this.timers.lastFrame = now;
-        this.elapsed = now - this.startTime;
-        this.update(dt);
-        this.render();
-        requestAnimationFrame((t) => this.loop(t));
-    },update(dt) {
-        if (this.input.joyActive) {
-            this.player.x += this.input.dx * this.player.speed;
-            this.player.y += this.input.dy * this.player.speed;
+
+const account = {
+    current: null,
+    db: JSON.parse(localStorage.getItem('v9_users')) || {},
+
+    login() {
+        const nick = document.getElementById('auth-nick').value.trim();
+        const pass = document.getElementById('auth-pass').value.trim();
+
+        if (nick.length < 3 || pass.length < 3) return alert("Слишком короткий ник или пароль!");
+
+        if (this.db[nick]) {
+            if (this.db[nick].pass === pass) {
+                this.current = this.db[nick];
+            } else {
+                return alert("Этот ник уже занят другим игроком (неверный пароль)!");
+            }
+        } else {
+            // Регистрация нового игрока
+            this.current = {
+                nick: nick,
+                pass: pass,
+                gold: 0,
+                lvl: 1,
+                exp: 0,
+                nextExp: 100,
+                unlocked: ['square'],
+                achieved: [],
+                // Глобальные навыки (дерево)
+                tree: { hp: 0, dmg: 0, armor: 0 },
+                treeSpent: 0, // Потрачено очков на текущем уровне
+                // Рекорды для таблицы лидеров
+                records: { level: 1, endless: 0, bossrush: 0 }
+            };
+            this.db[nick] = this.current;
         }
-        const totalSec = Math.floor(this.elapsed / 1000);
-        const mins = Math.floor(totalSec / 60).toString().padStart(2, '0');
-        const secs = (totalSec % 60).toString().padStart(2, '0');
-        const tEl = document.getElementById('timer-val');
-        if (tEl) tEl.innerText = `${mins}:${secs}`;
-        this.timers.shoot += dt;
-        if (this.timers.shoot > 550) {
-            this.logicShoot();
-            this.timers.shoot = 0;
-        }
-        this.timers.spawn += dt;
-        const sRate = Math.max(300, 1100 - (this.player.lvl * 45));
-        if (this.timers.spawn > sRate && this.entities.enemies.length < 75) {
-            this.logicSpawn();
-            this.timers.spawn = 0;
-        }
-        this.updateBullets();
-        this.updateEnemies(dt);
-        this.updateItems();
-        this.updateParticles(dt);
-        this.updateTexts();
-        if (this.player.exp >= this.player.nextExp) this.levelUp();
+        
+        this.save();
+        this.updateProfile();
+        ui.showTab('lobby');
+        meta.init();
     },
-    logicShoot() {
-        if (this.entities.enemies.length === 0) return;
-        let target = null;
-        let minD = 850;
-        for (let e of this.entities.enemies) {
-            const d = Math.hypot(e.x - this.player.x, e.y - this.player.y);
-            if (d < minD) { minD = d; target = e; }
+
+    save() {
+        if (this.current) {
+            this.current.records.level = this.current.lvl;
+            this.db[this.current.nick] = this.current;
         }
-        if (target) {
-            const a = Math.atan2(target.y - this.player.y, target.x - this.player.x);
-            this.entities.bullets.push({ x: this.player.x, y: this.player.y, vx: Math.cos(a) * 17, vy: Math.sin(a) * 17, dmg: this.player.dmg });
-        }
+        localStorage.setItem('v9_users', JSON.stringify(this.db));
     },
-    logicSpawn() {
-        const a = Math.random() * Math.PI * 2;
-        const d = Math.max(this.width, this.height) + 100;
-        const elite = Math.random() > 0.9;
-        this.entities.enemies.push({
-            x: this.player.x + Math.cos(a) * d,
-            y: this.player.y + Math.sin(a) * d,
-            hp: (elite ? 700 : 130) + (this.player.lvl * 30),
-            maxHp: (elite ? 700 : 130) + (this.player.lvl * 30),
-            speed: (elite ? 2.1 : 2.6) + (this.player.lvl * 0.05),
-            size: elite ? 30 : 22,
-            color: elite ? '#ffaa00' : '#ff4d4d',
-            isElite: elite
+
+    updateProfile() {
+        const c = this.current;
+        document.getElementById('p-nick').innerText = c.nick;
+        document.getElementById('p-lvl').innerText = c.lvl;
+        document.getElementById('l-gold').innerText = c.gold.toLocaleString();
+        
+        const perc = (c.exp / c.nextExp) * 100;
+        document.getElementById('xp-mini-fill').style.width = perc + '%';
+        document.getElementById('p-exp-text').innerText = `${Math.floor(c.exp)}/${c.nextExp} EXP`;
+    },
+
+    addGlobalExp(amt) {
+        this.current.exp += amt;
+        if (this.current.exp >= this.current.nextExp) {
+            this.current.lvl++;
+            this.current.exp -= this.current.nextExp;
+            this.current.nextExp = Math.floor(this.current.nextExp * 1.6);
+            alert("НОВЫЙ УРОВЕНЬ АККАУНТА: " + this.current.lvl);
+        }
+        this.updateProfile();
+        this.save();
+    }
+};const treeData = [
+    { id: 'hp', name: 'ЖИВУЧЕСТЬ', desc: '+15% HP для всех героев', icon: '❤️' },
+    { id: 'dmg', name: 'СИЛА АТАККИ', desc: '+10% к урону всех оружий', icon: '⚔️' },
+    { id: 'armor', name: 'БРОНЯ', desc: '+5% снижения урона', icon: '🛡️' }
+];
+
+// Расширяем объект UI для работы с деревом и лидерами
+Object.assign(ui, {
+    renderTree() {
+        const container = document.getElementById('tree-container');
+        const points = account.current.lvl - account.current.treeSpent;
+        document.getElementById('tree-points').innerText = points;
+        container.innerHTML = '';
+
+        treeData.forEach(s => {
+            const level = account.current.tree[s.id];
+            const node = document.createElement('div');
+            // Можно качать только если есть очки (1 уровень = 1 очко)
+            const canBuy = points > 0;
+            node.className = `tree-node ${canBuy ? 'available' : ''} ${level > 0 ? 'maxed' : ''}`;
+            
+            node.innerHTML = `
+                <div class="node-info">
+                    <b>${s.icon} ${s.name} (Ур. ${level})</b>
+                    <span>${s.desc}</span>
+                </div>
+                <button class="btn-sec" ${!canBuy ? 'disabled' : ''} onclick="meta.buyGlobal('${s.id}')">
+                    ${canBuy ? 'УЛУЧШИТЬ' : 'НЕТ ОЧКОВ'}
+                </button>
+            `;
+            container.appendChild(node);
         });
     },
-    updateBullets() {
-        for (let i = this.entities.bullets.length - 1; i >= 0; i--) {
-            const b = this.entities.bullets[i];
-            b.x += b.vx; b.y += b.vy;
-            if (Math.hypot(b.x - this.player.x, b.y - this.player.y) > 1600) this.entities.bullets.splice(i, 1);
+
+    renderLB(type) {
+        const head = document.getElementById('lb-head');
+        const body = document.getElementById('lb-body');
+        body.innerHTML = '';
+
+        let colName = "Значение";
+        if(type === 'level') colName = "Уровень";
+        if(type === 'endless') colName = "Время (сек)";
+        if(type === 'bossrush') colName = "Боссов";
+
+        head.innerHTML = `<th>#</th><th>Игрок</th><th>${colName}</th>`;
+
+        const users = Object.values(account.db)
+            .sort((a, b) => {
+                if(type === 'level') return b.lvl - a.lvl;
+                return (b.records[type] || 0) - (a.records[type] || 0);
+            })
+            .slice(0, 10);
+
+        users.forEach((u, i) => {
+            const val = type === 'level' ? u.lvl : (u.records[type] || 0);
+            body.innerHTML += `<tr><td>${i+1}</td><td>${u.nick}</td><td>${val}</td></tr>`;
+        });
+    }
+});
+
+// Система частиц и тряски
+const fx = {
+    particles: [],
+    
+    shake() {
+        const b = document.getElementById('game-body') || document.body;
+        b.classList.add('shake-screen');
+        setTimeout(() => b.classList.remove('shake-screen'), 200);
+    },
+
+    spawn(x, y, color, count = 8) {
+        for(let i=0; i<count; i++) {
+            this.particles.push({
+                x, y, 
+                vx: (Math.random()-0.5)*10, 
+                vy: (Math.random()-0.5)*10, 
+                life: 1.0, 
+                color: color
+            });
         }
     },
-    updateEnemies(dt) {
+
+    update(dt) {
+        for(let i = this.particles.length-1; i>=0; i--) {
+            const p = this.particles[i];
+            p.x += p.vx; p.y += p.vy;
+            p.life -= 0.02;
+            if(p.life <= 0) this.particles.splice(i, 1);
+        }
+    },
+
+    draw(ctx) {
+        this.particles.forEach(p => {
+            ctx.globalAlpha = p.life;
+            ctx.fillStyle = p.color;
+            ctx.fillRect(p.x, p.y, 4, 4);
+        });
+        ctx.globalAlpha = 1.0;
+    }
+};
+
+// Мета-логика покупок
+meta.buyGlobal = function(id) {
+    const points = account.current.lvl - account.current.treeSpent;
+    if (points > 0) {
+        account.current.tree[id]++;
+        account.current.treeSpent++;
+        account.save();
+        ui.renderTree();
+    }
+};
+
+// Разрушаемые объекты (Ящики)
+const objects = {
+    items: [],
+    spawnBox(px, py) {
+        const ang = Math.random()*Math.PI*2;
+        const d = 400 + Math.random()*400;
+        this.items.push({
+            x: px + Math.cos(ang)*d,
+            y: py + Math.sin(ang)*d,
+            type: 'box',
+            hp: 1,
+            size: 25
+        });
+    },
+
+    update(player, enemies) {
+        for(let i = this.items.length-1; i>=0; i--) {
+            const b = this.items[i];
+            // Проверка попадания пуль игрока по ящику (упрощенно)
+            game.entities.bullets.forEach(bul => {
+                if(Math.hypot(bul.x - b.x, bul.y - b.y) < b.size + 10) {
+                    b.hp = 0;
+                    bul.life = 0;
+                }
+            });
+
+            if(b.hp <= 0) {
+                fx.spawn(b.x, b.y, '#8b4513', 12); // Древесные частицы
+                // Выпадение бонуса
+                const rnd = Math.random();
+                if(rnd > 0.7) game.entities.items.push({ x: b.x, y: b.y, type: 'gold_bag' });
+                else if(rnd > 0.4) game.entities.items.push({ x: b.x, y: b.y, type: 'heal' });
+                this.items.splice(i, 1);
+            }
+        }
+    },
+
+    draw(ctx) {
+        this.items.forEach(b => {
+            ctx.fillStyle = '#5d4037';
+            ctx.strokeStyle = '#3e2723';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(b.x-12, b.y-12, 24, 24);
+            ctx.fillRect(b.x-10, b.y-10, 20, 20);
+            // Крест на ящике
+            ctx.beginPath();
+            ctx.moveTo(b.x-10, b.y-10); ctx.lineTo(b.x+10, b.y+10);
+            ctx.moveTo(b.x+10, b.y-10); ctx.lineTo(b.x-10, b.y+10);
+            ctx.stroke();
+        });
+    }
+};// Расширяем основной объект игры
+Object.assign(game, {
+    mode: 'normal', // normal, endless, bossrush
+    
+    preStart(mode) {
+        this.mode = mode;
+        this.start();
+    },
+
+    // Переопределяем метод старта для учета глобальных бонусов
+    start() {
+        const char = meta.chars[meta.selected];
+        const mLvl = meta.charLevels[meta.selected];
+        const g = account.current.tree; // Глобальные бонусы из дерева
+
+        // Применяем статы: (База * Множитель уровня) + Глобальный бонус дерева
+        this.player.maxHp = (char.hp * (1 + mLvl * 0.1)) * (1 + g.hp * 0.15);
+        this.player.hp = this.player.maxHp;
+        this.player.speed = char.spd * (1 + mLvl * 0.05);
+        this.player.dmgMod = 1 + (g.dmg * 0.1); // Множитель урона
+        this.player.armor = g.armor * 0.05;    // Снижение урона
+
+        this.player.x = 0; this.player.y = 0;
+        this.player.exp = 0; this.player.nextExp = 100;
+        this.player.lvl = 1; this.player.gold = 0;
+        this.player.kills = 0; this.player.bossKills = 0;
+        this.player.skills = {};
+        this.player.skills[char.skill] = 1;
+
+        this.entities = { enemies: [], bullets: [], items: [], texts: [] };
+        objects.items = []; // Очистка ящиков
+        this.elapsed = 0;
+        this.active = true;
+        this.paused = false;
+        
+        ui.showTab('hud'); // Показываем только игровой интерфейс
+        document.getElementById('lobby').classList.add('hidden');
+        document.getElementById('joy-base').classList.remove('hidden');
+        
+        this.updateUI();
+        this.timers.last = performance.now();
+        requestAnimationFrame((t) => this.loop(t));
+    },
+
+    update(dt) {
+        if (this.paused) return;
+
+        // Движение игрока
+        let curSpd = this.player.speed;
+        if (this.player.skills.speed_up) curSpd *= (1 + this.player.skills.speed_up * 0.15);
+        
+        if (this.input.joyActive) {
+            this.player.x += this.input.dx * curSpd;
+            this.player.y += this.input.dy * curSpd;
+        }
+
+        this.elapsed += dt;
+        const totalSec = Math.floor(this.elapsed / 1000);
+
+        // Таймеры оружия (учитываем dmgMod)
+        this.updateWeapons(dt);
+
+        // Спавн в зависимости от режима
+        this.handleSpawning(dt, totalSec);
+
+        // Обновление сущностей и объектов
+        this.processEnemies(dt);
+        this.processBullets(dt);
+        this.processItems(dt);
+        objects.update(this.player);
+        fx.update(dt);
+
+        // Спавн ящиков каждые 15 секунд
+        if (totalSec % 15 === 0 && Math.random() < 0.02) {
+            objects.spawnBox(this.player.x, this.player.y);
+        }
+
+        this.updateUI();
+        
+        // Лимит времени для нормального режима
+        if (this.mode === 'normal' && totalSec >= 1800) this.gameOver(true);
+    },
+
+    handleSpawning(dt, sec) {
+        this.timers.spawn += dt;
+        let rate = 800;
+
+        if (this.mode === 'bossrush') {
+            rate = 5000; // Реже обычные враги
+            if (sec > 0 && sec % 30 === 0 && !this.entities.enemies.some(e => e.isBoss)) {
+                this.spawnEnemy(true);
+            }
+        } else {
+            rate = Math.max(100, 900 - (this.player.lvl * 30));
+            if (this.mode === 'endless') rate *= 0.8; // Больше врагов
+            if (sec > 0 && sec % 300 === 0) this.spawnEnemy(true);
+        }
+
+        if (this.timers.spawn > rate) {
+            this.spawnEnemy(false);
+            this.timers.spawn = 0;
+        }
+    },
+
+    processEnemies(dt) {
         for (let i = this.entities.enemies.length - 1; i >= 0; i--) {
             const e = this.entities.enemies[i];
-            const dx = this.player.x - e.x, dy = this.player.y - e.y, dist = Math.hypot(dx, dy);
-            e.x += (dx / dist) * e.speed; e.y += (dy / dist) * e.speed;
-            for (let j = this.entities.bullets.length - 1; j >= 0; j--) {
-                const b = this.entities.bullets[j];
-                if (Math.hypot(b.x - e.x, b.y - e.y) < e.size + 8) {
-                    const dmg = Math.floor(b.dmg * (0.8 + Math.random() * 0.4));
-                    e.hp -= dmg;
-                    this.addDamageText(e.x, e.y - 15, dmg, e.isElite ? '#ffaa00' : '#fff');
-                    this.entities.bullets.splice(j, 1);
-                }
+            const d = Math.hypot(this.player.x - e.x, this.player.y - e.y);
+            
+            e.x += ((this.player.x - e.x) / d) * e.speed;
+            e.y += ((this.player.y - e.y) / d) * e.speed;
+
+            // Урон игроку
+            if (d < this.player.size + e.size && !this.admGod) {
+                let dmg = e.isBoss ? 1.5 : 0.6;
+                dmg *= (1 - this.player.armor); // Броня из дерева
+                if (this.player.skills.shield) dmg *= (1 - this.player.skills.shield * 0.15);
+                
+                this.player.hp -= dmg;
+                fx.shake(); // Тряска при уроне
+                if (this.player.hp <= 0) this.gameOver(false);
             }
-            if (dist < 38) {
-                this.player.hp -= 0.8;
-                if (Math.random() > 0.9) this.updateUI();
-                if (this.player.hp <= 0) this.gameOver();
-            }
+
             if (e.hp <= 0) {
-                this.player.gold += e.isElite ? 100 : 20;
-                this.entities.items.push({ x: e.x, y: e.y });
+                const isB = e.isBoss;
+                if (isB) this.player.bossKills++;
+                this.player.kills++;
+                
+                // Начисление глобального опыта аккаунта
+                account.addGlobalExp(isB ? 10 : 1);
+                
+                // Золото и опыт в матче
+                this.player.gold += (isB ? 500 : 10);
+                this.entities.items.push({ x: e.x, y: e.y, type: 'exp' });
+                
+                fx.spawn(e.x, e.y, e.color, isB ? 25 : 8); // Частицы смерти
                 this.entities.enemies.splice(i, 1);
-                this.updateUI();
             }
         }
     },
-    updateItems() {
+
+    processItems(dt) {
         for (let i = this.entities.items.length - 1; i >= 0; i--) {
             const it = this.entities.items[i];
             const d = Math.hypot(it.x - this.player.x, it.y - this.player.y);
-            if (d < this.player.pickRadius) {
-                it.x += (this.player.x - it.x) / d * 14;
-                it.y += (this.player.y - it.y) / d * 14;
+            
+            if (d < 120) {
+                it.x += (this.player.x - it.x) * 0.2;
+                it.y += (this.player.y - it.y) * 0.2;
             }
-            if (d < 25) { this.player.exp += 50; this.entities.items.splice(i, 1); this.updateUI(); }
+
+            if (d < 20) {
+                if (it.type === 'exp') this.player.exp += 35;
+                if (it.type === 'heal') this.player.hp = Math.min(this.player.maxHp, this.player.hp + 30);
+                if (it.type === 'gold_bag') this.player.gold += 200;
+                
+                this.entities.items.splice(i, 1);
+                if (this.player.exp >= this.player.nextExp) this.levelUp();
+            }
         }
     },
-    updateParticles(dt) {
-        for (let i = this.entities.particles.length - 1; i >= 0; i--) {
-            const p = this.entities.particles[i];
-            p.life -= dt; p.x += p.vx; p.y += p.vy;
-            if (p.life <= 0) this.entities.particles.splice(i, 1);
-        }
-    },
-    updateTexts() {
-        for (let i = this.entities.damageTexts.length - 1; i >= 0; i--) {
-            const t = this.entities.damageTexts[i];
-            t.life -= 0.025; t.y += t.vy;
-            if (t.life <= 0) this.entities.damageTexts.splice(i, 1);
-        }
-    },
-    render() {
-        const cx = this.width / 2, cy = this.height / 2;
-        this.ctx.fillStyle = '#020202';
-        this.ctx.fillRect(0, 0, this.width, this.height);
-        this.ctx.save();
-        const tw = 128;
-        const ox = Math.floor((-this.player.x % tw) - tw), oy = Math.floor((-this.player.y % tw) - tw);
-        for (let x = ox; x < this.width + tw; x += tw) {
-            for (let y = oy; y < this.height + tw; y += tw) { this.ctx.drawImage(this.bgTile, x, y); }
-        }
-        this.ctx.fillStyle = '#00ffd4';
-        for (let it of this.entities.items) {
-            this.ctx.beginPath(); this.ctx.arc(it.x - this.player.x + cx, it.y - this.player.y + cy, 6, 0, Math.PI * 2); this.ctx.fill();
-        }
-        this.ctx.fillStyle = '#ff0';
-        for (let b of this.entities.bullets) {
-            this.ctx.fillRect(b.x - this.player.x + cx - 4, b.y - this.player.y + cy - 4, 10, 10);
-        }
-        for (let e of this.entities.enemies) {
-            const ex = e.x - this.player.x + cx, ey = e.y - this.player.y + cy;
-            this.ctx.fillStyle = e.color;
-            this.ctx.beginPath(); this.ctx.arc(ex, ey, e.size, 0, Math.PI * 2); this.ctx.fill();
-            this.ctx.fillStyle = 'rgba(0,0,0,0.5)'; this.ctx.fillRect(ex - 20, ey - e.size - 10, 40, 5);
-            this.ctx.fillStyle = '#f33'; this.ctx.fillRect(ex - 20, ey - e.size - 10, (e.hp / e.maxHp) * 40, 5);
-        }
-        this.ctx.fillStyle = '#00d4ff'; this.ctx.shadowBlur = 25; this.ctx.shadowColor = '#00d4ff';
-        this.ctx.fillRect(cx - 17, cy - 17, 34, 34); this.ctx.shadowBlur = 0;
-        this.ctx.textAlign = 'center';
-        for (let t of this.entities.damageTexts) {
-            this.ctx.globalAlpha = t.life; this.ctx.fillStyle = t.color; this.ctx.font = 'bold 20px Arial';
-            this.ctx.fillText(t.text, t.x - this.player.x + cx, t.y - this.player.y + cy);
-        }
-        this.ctx.globalAlpha = 1.0; this.ctx.restore();
-    },
-    gameOver() {
+
+    gameOver(win) {
         this.active = false;
-        alert(`GAME OVER\nLVL: ${this.player.lvl}\nGOLD: ${this.player.gold}`);
+        const totalGold = Math.floor(this.player.gold);
+        account.current.gold += totalGold;
+        
+        // Обновление рекордов
+        const rec = account.current.records;
+        const sec = Math.floor(this.elapsed / 1000);
+        
+        if (this.mode === 'endless' && sec > rec.endless) rec.endless = sec;
+        if (this.mode === 'bossrush' && this.player.bossKills > rec.bossrush) rec.bossrush = this.player.bossKills;
+        
+        account.save();
+        
+        alert(`${win ? 'ПОБЕДА!' : 'ИГРА ОКОНЧЕНА'}\nСобрано золота: ${totalGold}\nУбито врагов: ${this.player.kills}`);
         location.reload();
     }
+});// Финализация рендеринга и оружия
+Object.assign(game, {
+    render() {
+        const ctx = this.ctx;
+        const cx = this.width / 2, cy = this.height / 2;
+        
+        // Очистка экрана
+        ctx.fillStyle = '#050805';
+        ctx.fillRect(0, 0, this.width, this.height);
+
+        ctx.save();
+        ctx.translate(cx - this.player.x, cy - this.player.y);
+
+        // Отрисовка фона (плитка)
+        const gridSize = 128;
+        const startX = Math.floor(this.player.x / gridSize) * gridSize - gridSize * 5;
+        const startY = Math.floor(this.player.y / gridSize) * gridSize - gridSize * 5;
+        for (let x = startX; x < startX + gridSize * 11; x += gridSize) {
+            for (let y = startY; y < startY + gridSize * 11; y += gridSize) {
+                ctx.drawImage(this.bgTile, x, y);
+            }
+        }
+
+        // Отрисовка разрушаемых объектов
+        objects.draw(ctx);
+
+        // Враги
+        this.entities.enemies.forEach(e => {
+            ctx.fillStyle = e.color;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+            ctx.fill();
+            if (e.isBoss) {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                // Полоска HP босса
+                ctx.fillStyle = '#000';
+                ctx.fillRect(e.x - 30, e.y - e.size - 10, 60, 6);
+                ctx.fillStyle = '#f00';
+                ctx.fillRect(e.x - 30, e.y - e.size - 10, 60 * (e.hp / e.maxHp), 6);
+            }
+        });
+
+        // Сферы опыта и бонусы
+        this.entities.items.forEach(it => {
+            if(it.type === 'exp') ctx.fillStyle = '#00ffd4';
+            else if(it.type === 'heal') ctx.fillStyle = '#ff4d4d';
+            else if(it.type === 'gold_bag') ctx.fillStyle = '#ffd700';
+            
+            ctx.beginPath();
+            ctx.arc(it.x, it.y, it.type === 'exp' ? 6 : 10, 0, Math.PI * 2);
+            ctx.fill();
+            if(it.type !== 'exp') { 
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke(); 
+            }
+        });
+
+        // Снаряды
+        this.entities.bullets.forEach(b => {
+            ctx.fillStyle = b.color;
+            if (b.type === 'brick') {
+                ctx.fillRect(b.x - 20, b.y - 12, 40, 24);
+            } else {
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+
+        // Игрок (вызов функции отрисовки формы из V8)
+        this.renderPlayer(ctx, this.player.x, this.player.y);
+
+        // Эффекты частиц
+        fx.draw(ctx);
+
+        // Тексты урона / эффектов
+        this.entities.texts.forEach((t, i) => {
+            ctx.fillStyle = t.color;
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText(t.txt, t.x, t.y);
+            t.y -= 1;
+            t.life -= 16;
+            if (t.life <= 0) this.entities.texts.splice(i, 1);
+        });
+
+        ctx.restore();
+    },
+
+    // Модифицированная стрельба с учетом глобального урона
+    weaponShot() {
+        const target = this.getClosestEnemy();
+        if (!target) return;
+        const lvl = this.player.skills.shot;
+        const isEvo = lvl >= 6;
+        const count = isEvo ? 5 : 1 + Math.floor(lvl / 3);
+        
+        // Базовый урон умножаем на dmgMod из дерева навыков
+        const baseDmg = (isEvo ? 400 : 60) + (lvl * 15);
+        const totalDmg = baseDmg * this.player.dmgMod;
+
+        for (let i = 0; i < count; i++) {
+            const angle = Math.atan2(target.y - this.player.y, target.x - this.player.x) + (i - (count-1)/2) * 0.2;
+            this.entities.bullets.push({
+                x: this.player.x, y: this.player.y,
+                vx: Math.cos(angle) * 16, vy: Math.sin(angle) * 16,
+                dmg: totalDmg,
+                life: 1200, type: 'bullet',
+                color: isEvo ? '#ff004c' : '#00d4ff'
+            });
+        }
+    }
+});
+
+// Инициализация при загрузке страницы
+window.onload = () => {
+    game.init();
+    
+    // Переопределяем метод init в meta, чтобы он не запускался до авторизации
+    meta.init = function() {
+        this.gold = account.current.gold;
+        this.unlocked = account.current.unlocked;
+        this.achieved = account.current.achieved;
+        this.renderLobby();
+        this.renderAch();
+        ui.renderTree();
+    };
+
+    // Слушатель для кнопки открытия дерева
+    const oldShowTab = ui.showTab;
+    ui.showTab = function(id) {
+        if(id === 'skill-tree') ui.renderTree();
+        if(id === 'leaderboard') account.renderLB('level');
+        oldShowTab.call(ui, id);
+    };
 };
-game.init();
+
+// Исправление для джойстика в V9 (учет центрирования)
+game.setupControls = function() {
+    const base = document.getElementById('joy-base');
+    const stick = document.getElementById('joy-stick');
+    
+    const handleMove = (e) => {
+        if (!this.active || this.paused) return;
+        const touch = e.touches ? e.touches[0] : e;
+        const rect = base.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        
+        let dx = touch.clientX - centerX;
+        let dy = touch.clientY - centerY;
+        const dist = Math.hypot(dx, dy);
+        const maxDist = 45;
+
+        this.input.joyActive = true;
+        const angle = Math.atan2(dy, dx);
+        const moveDist = Math.min(dist, maxDist);
+
+        this.input.dx = Math.cos(angle) * (moveDist / maxDist);
+        this.input.dy = Math.sin(angle) * (moveDist / maxDist);
+
+        stick.style.transform = `translate(${Math.cos(angle) * moveDist}px, ${Math.sin(angle) * moveDist}px)`;
+    };
+
+    const handleEnd = () => {
+        this.input.joyActive = false;
+        this.input.dx = 0; this.input.dy = 0;
+        stick.style.transform = `translate(0px, 0px)`;
+    };
+
+    base.addEventListener('touchstart', (e) => { e.preventDefault(); handleMove(e); }, {passive: false});
+    base.addEventListener('touchmove', (e) => { e.preventDefault(); handleMove(e); }, {passive: false});
+    base.addEventListener('touchend', handleEnd);
+    
+    // ПК управление
+    window.addEventListener('keydown', (e) => {
+        if(!this.active) return;
+        this.input.joyActive = true;
+        if (e.key === 'w' || e.key === 'ArrowUp') this.input.dy = -1;
+        if (e.key === 's' || e.key === 'ArrowDown') this.input.dy = 1;
+        if (e.key === 'a' || e.key === 'ArrowLeft') this.input.dx = -1;
+        if (e.key === 'd' || e.key === 'ArrowRight') this.input.dx = 1;
+    });
+    window.addEventListener('keyup', handleEnd);
+};
+
 </script>
 </body>
 </html>
