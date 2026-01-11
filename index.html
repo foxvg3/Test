@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Survivor.io - Ultimate Dev Edition</title>
+    <style>
+        body { margin: 0; background: #050505; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; color: white; user-select: none; }
+        canvas { display: block; }
+        .hidden { display: none !important; }
+        
+        /* Интерфейс */
+        #ui { position: absolute; top: 0; left: 0; width: 100%; padding: 10px; box-sizing: border-box; z-index: 10; pointer-events: none; }
+        .top-bar { display: flex; align-items: center; gap: 10px; }
+        #exp-bar { flex-grow: 1; height: 10px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px; overflow: hidden; }
+        #exp-fill { width: 0%; height: 100%; background: #00d4ff; box-shadow: 0 0 10px #00d4ff; }
+        #timer { font-size: 20px; font-weight: bold; text-align: center; margin-top: 5px; }
+        #hp-bar { width: 120px; height: 12px; background: #333; margin-top: 5px; border-radius: 6px; border: 2px solid #000; overflow: hidden; }
+        #hp-fill { width: 100%; height: 100%; background: #ff4d4d; transition: width 0.2s; }
+        #gold-ui { color: #ffd700; font-weight: bold; margin-top: 5px; }
+
+        /* Кнопка админки */
+        #dev-toggle { position: absolute; top: 80px; right: 10px; z-index: 30; background: #00d4ff; color: black; padding: 5px 10px; border-radius: 5px; font-size: 12px; font-weight: bold; display: none; pointer-events: all; cursor: pointer; }
+
+        /* Панель админа */
+        #dev-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+        .dev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 90%; max-width: 400px; }
+        .dev-btn { background: #222; border: 2px solid #00d4ff; color: #00d4ff; padding: 12px; border-radius: 8px; font-weight: bold; text-align: center; cursor: pointer; font-size: 12px; }
+
+        /* Экраны */
+        #level-up, #death-screen { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center; z-index: 150; flex-direction: column; }
+        .modal { background: #1a1a1a; padding: 20px; border-radius: 15px; border: 3px solid #00d4ff; width: 85%; max-width: 350px; text-align: center; }
+        .card { background: #2a2a2a; border: 2px solid #444; padding: 15px; margin: 10px 0; border-radius: 10px; cursor: pointer; text-align: left; pointer-events: all; }
+        .card b { color: #00d4ff; display: block; margin-bottom: 5px; }
+        
+        .shop-item { background: #1a1a1a; border: 1px solid #ffd700; padding: 15px; margin: 5px; border-radius: 10px; width: 250px; }
+        .buy-btn { background: #ffd700; color: black; padding: 5px 15px; border-radius: 5px; margin-top: 8px; display: inline-block; cursor: pointer; font-weight: bold; }
+
+        #joystick-container { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); width: 100px; height: 100px; z-index: 5; }
+        #joystick-base { width: 100%; height: 100%; background: rgba(255,255,255,0.05); border-radius: 50%; border: 2px solid rgba(0,212,255,0.2); display: flex; align-items: center; justify-content: center; }
+        #joystick-stick { width: 40px; height: 40px; background: #00d4ff; border-radius: 50%; opacity: 0.6; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div class="top-bar">
+        <div style="font-weight: bold; color: #00d4ff;">Lvl <span id="lvl">1</span></div>
+        <div id="exp-bar"><div id="exp-fill"></div></div>
+    </div>
+    <div id="hp-bar"><div id="hp-fill"></div></div>
+    <div id="gold-ui">Золото: <span id="gold-count">0</span></div>
+    <div id="timer">00:00</div>
+</div>
+
+<div id="dev-toggle" onclick="toggleDevPanel()">DEV MENU</div>
+
+<div id="dev-panel">
+    <h2 style="color:#00d4ff">MEGA DEV TOOLS</h2>
+    <div class="dev-grid">
+        <div class="dev-btn" onclick="godMode=!godMode; this.innerText='БОГ: '+(godMode?'ВКЛ':'ВЫКЛ')">БОГ: ВЫКЛ</div>
+        <div class="dev-btn" onclick="devKillAll()">УБИТЬ ВСЕХ</div>
+        <div class="dev-btn" onclick="timeOffset += 60">+1 МИНУТА</div>
+        <div class="dev-btn" onclick="spawnBoss()">БОСС</div>
+        <div class="dev-btn" onclick="devMagnet()">МАГНИТ</div>
+        <div class="dev-btn" onclick="devFastFire()">ТУРБО-АТАКА</div>
+        <div class="dev-btn" onclick="player.speed *= 1.5; this.style.color='orange'">СКОРОСТЬ+</div>
+        <div class="dev-btn" onclick="persistentUpgrades.gold += 1000; updateGoldUI()">+1000 $</div>
+        <div class="dev-btn" style="border-color: yellow;" onclick="closeDevAndLvl()">LEVEL UP</div>
+        <div class="dev-btn" style="border-color: #ff4444;" onclick="devResetAll()">СБРОС</div>
+    </div>
+    <div class="dev-btn" style="width: 200px; border-color: red; margin-top: 15px;" onclick="toggleDevPanel()">ВЫХОД</div>
+</div>
+
+<div id="death-screen">
+    <h1 style="color: red;">ВЫ ПОГИБЛИ</h1>
+    <p>Золото: <span id="final-gold">0</span></p>
+    <div class="shop-item"><b>Урон +5 (Пост.)</b><br><span class="buy-btn" onclick="buyUpgrade('dmg')">100 G</span></div>
+    <div class="shop-item"><b>HP +20 (Пост.)</b><br><span class="buy-btn" onclick="buyUpgrade('hp')">150 G</span></div>
+    <div class="dev-btn" onclick="location.reload()" style="margin-top:20px; background:#00d4ff; color:black; width: 200px;">ИГРАТЬ СНОВА</div>
+</div>
+
+<div id="level-up"><div class="modal"><h2 id="lvl-title">НОВЫЙ УРОВЕНЬ</h2><div id="cards-container"></div></div></div>
+
+<canvas id="game"></canvas>
+<div id="joystick-container"><div id="joystick-base"><div id="joystick-stick"></div></div></div>
+
+<script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let gameActive = true, isPaused = false, godMode = false;
+    let startTime = Date.now(), timeOffset = 0, lastBossSpawn = 0;
+    
+    // Загрузка сохранений
+    let persistentUpgrades = JSON.parse(localStorage.getItem('survivor_upgrades')) || { dmg: 0, hp: 0, gold: 0 };
+    if (window.location.search.includes('ad')) document.getElementById('dev-toggle').style.display = 'block';
+
+    const player = {
+        x: 0, y: 0, hp: 100 + persistentUpgrades.hp, maxHp: 100 + persistentUpgrades.hp, lvl: 1, exp: 0, nextLvl: 100, speed: 3.8, armor: 0,
+        skills: { weapon: 1, bullets: 1 }
+    };
+
+    let enemies = [], bullets = [], crystals = [], goldDrops = [], damageTexts = [];
+    let stats = { fireRate: 800, lastShot: 0, baseDamage: 15 + persistentUpgrades.dmg };
+
+    // --- ФУНКЦИИ АДМИНКИ ---
+    function toggleDevPanel() {
+        isPaused = !isPaused;
+        document.getElementById('dev-panel').style.display = isPaused ? 'flex' : 'none';
+    }
+    function devKillAll() { enemies.forEach(e => spawnLoot(e)); enemies = []; }
+    function devMagnet() { crystals.forEach(c => { c.x = player.x; c.y = player.y; }); goldDrops.forEach(g => { g.x = player.x; g.y = player.y; }); }
+    function devFastFire() { stats.fireRate = 60; }
+    function devResetAll() { localStorage.removeItem('survivor_upgrades'); location.reload(); }
+    function closeDevAndLvl() { toggleDevPanel(); showLevelUp(); }
+    function spawnBoss() { enemies.push({x: player.x+300, y: player.y, hp: 5000, boss: true, size: 60, color: '#ff0000', speed: 1.2, hit: 0}); }
+
+    // --- ЭКОНОМИКА ---
+    function buyUpgrade(type) {
+        let cost = type === 'dmg' ? 100 : 150;
+        if (persistentUpgrades.gold >= cost) {
+            persistentUpgrades.gold -= cost;
+            persistentUpgrades[type] += (type === 'dmg' ? 5 : 20);
+            localStorage.setItem('survivor_upgrades', JSON.stringify(persistentUpgrades));
+            updateGoldUI();
+            document.getElementById('final-gold').innerText = persistentUpgrades.gold;
+        }
+    }
+    function updateGoldUI() { document.getElementById('gold-count').innerText = persistentUpgrades.gold; }
+    updateGoldUI();
+
+    // --- ЛОГИКА ИГРЫ ---
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize); resize();
+
+    let joystick = { active: false, x: 0, y: 0 };
+    const stick = document.getElementById('joystick-stick'), jBase = document.getElementById('joystick-base');
+    function handleInput(e) {
+        const t = e.touches ? e.touches[0] : e;
+        const b = jBase.getBoundingClientRect();
+        const dx = t.clientX - (b.left + b.width/2), dy = t.clientY - (b.top + b.height/2);
+        const d = Math.min(Math.sqrt(dx*dx+dy*dy), 40);
+        const a = Math.atan2(dy, dx);
+        joystick.x = Math.cos(a) * (d/40); joystick.y = Math.sin(a) * (d/40);
+        stick.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
+    }
+    document.addEventListener('touchstart', e => { if(!isPaused && gameActive) joystick.active = true; handleInput(e); });
+    document.addEventListener('touchmove', e => { if(joystick.active) { e.preventDefault(); handleInput(e); } }, {passive: false});
+    document.addEventListener('touchend', () => { joystick.active = false; stick.style.transform = 'translate(0,0)'; });
+
+    function spawnLoot(e) {
+        crystals.push({x: e.x, y: e.y, big: e.boss});
+        if(Math.random() > 0.7 || e.boss) goldDrops.push({x: e.x + 10, y: e.y + 10});
+    }
+
+    function update() {
+        if(!gameActive || isPaused) return requestAnimationFrame(update);
+        let elapsed = Math.floor((Date.now() - startTime) / 1000) + timeOffset;
+        let mins = Math.floor(elapsed / 60);
+        document.getElementById('timer').innerText = `${mins.toString().padStart(2,'0')}:${(elapsed%60).toString().padStart(2,'0')}`;
+        
+        let difficultyMult = 1 + (mins * 0.1);
+
+        if(joystick.active) { player.x += joystick.x * player.speed; player.y += joystick.y * player.speed; }
+
+        // Стрельба
+        let curDmg = (stats.baseDamage + player.skills.weapon*7) * (player.skills.weapon >= 6 ? 2 : 1);
+        if(Date.now() - stats.lastShot > (stats.fireRate - player.skills.weapon*60)) {
+            let near = getNearestEnemy(700);
+            if(near) {
+                let angle = Math.atan2(near.y - player.y, near.x - player.x);
+                let bCount = player.skills.bullets + (player.skills.bullets >= 6 ? 4 : 0);
+                for(let i=0; i < bCount; i++) {
+                    bullets.push({x: player.x, y: player.y, vx: Math.cos(angle+(i-bCount/2)*0.2)*12, vy: Math.sin(angle+(i-bCount/2)*0.2)*12, pen: player.skills.weapon>=6?10:player.skills.weapon>=5?3:1});
+                }
+                stats.lastShot = Date.now();
+            }
+        }
+
+        // Пули
+        bullets.forEach((b, bi) => {
+            b.x += b.vx; b.y += b.vy;
+            enemies.forEach((e, ei) => {
+                if(Math.sqrt((b.x-e.x)**2 + (b.y-e.y)**2) < e.size) {
+                    e.hp -= curDmg; e.hit = 5; b.pen--;
+                    if(b.pen <= 0) bullets.splice(bi, 1);
+                    if(e.hp <= 0) { spawnLoot(e); enemies.splice(ei, 1); }
+                }
+            });
+            if(Math.abs(b.x-player.x) > 1000) bullets.splice(bi, 1);
+        });
+
+        // Враги
+        if(enemies.length < 35) {
+            let a = Math.random()*Math.PI*2;
+            enemies.push({ x: player.x+Math.cos(a)*600, y: player.y+Math.sin(a)*600, hp: (40 + player.lvl*7)*difficultyMult, speed: 1.4*difficultyMult, size: 18, color: '#ff4444', hit: 0, boss: false });
+        }
+
+        enemies.forEach(e => {
+            let a = Math.atan2(player.y-e.y, player.x-e.x);
+            e.x += Math.cos(a)*e.speed; e.y += Math.sin(a)*e.speed;
+            if(e.hit > 0) e.hit--;
+            if(Math.sqrt((e.x-player.x)**2+(e.y-player.y)**2) < e.size + 10) {
+                if(!godMode) player.hp -= Math.max(0.1, (e.boss ? 2 : 0.5) * difficultyMult - player.armor);
+                if(player.hp <= 0) gameOver();
+            }
+        });
+
+        // Сбор предметов
+        crystals.forEach((c, i) => { if(Math.sqrt((c.x-player.x)**2+(c.y-player.y)**2) < 55) { player.exp += c.big?2000:50; crystals.splice(i,1); if(player.exp >= player.nextLvl) showLevelUp(); }});
+        goldDrops.forEach((g, i) => { if(Math.sqrt((g.x-player.x)**2+(g.y-player.y)**2) < 55) { persistentUpgrades.gold += 10; goldDrops.splice(i,1); updateGoldUI(); }});
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function gameOver() {
+        gameActive = false;
+        document.getElementById('death-screen').style.display = 'flex';
+        document.getElementById('final-gold').innerText = persistentUpgrades.gold;
+        localStorage.setItem('survivor_upgrades', JSON.stringify(persistentUpgrades));
+    }
+
+    function showLevelUp() {
+        isPaused = true;
+        const cont = document.getElementById('cards-container'); cont.innerHTML = '';
+        document.getElementById('level-up').style.display = 'flex';
+        
+        const mainSkills = [
+            {id:'weapon', n:'ВЫСТРЕЛ (УРОН)', max: 6},
+            {id:'bullets', n:'ВЕЕР (КОЛ-ВО)', max: 6}
+        ];
+        
+        let available = mainSkills.filter(s => player.skills[s.id] < s.max);
+
+        if (available.length > 0) {
+            available.forEach(s => {
+                let d = document.createElement('div'); d.className = 'card';
+                d.innerHTML = `<b>${s.n} ${'★'.repeat(player.skills[s.id]+1)}</b><span>Улучшить атаку</span>`;
+                d.onclick = () => { player.skills[s.id]++; finishLvlUp(); };
+                cont.appendChild(d);
+            });
+        } else {
+            const extras = [
+                {n: 'УРОН +10', f: () => stats.baseDamage += 10},
+                {n: 'БРОНЯ +0.5', f: () => player.armor += 0.5},
+                {n: 'ЛЕЧЕНИЕ', f: () => player.hp = player.maxHp}
+            ];
+            extras.sort(() => 0.5 - Math.random()).slice(0, 3).forEach(e => {
+                let d = document.createElement('div'); d.className = 'card';
+                d.innerHTML = `<b>${e.n}</b><span>Бонус ветерана</span>`;
+                d.onclick = () => { e.f(); finishLvlUp(); };
+                cont.appendChild(d);
+            });
+        }
+    }
+
+    function finishLvlUp() { player.lvl++; player.exp = 0; player.nextLvl *= 1.35; isPaused = false; document.getElementById('level-up').style.display = 'none'; }
+
+    function getNearestEnemy(range) {
+        let near = null, minD = range;
+        enemies.forEach(e => { let d = Math.sqrt((e.x-player.x)**2+(e.y-player.y)**2); if(d < minD) { minD = d; near = e; }});
+        return near;
+    }
+
+    function draw() {
+        ctx.fillStyle = '#0a0d0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        const cx = canvas.width/2, cy = canvas.height/2;
+
+        // Сетка
+        ctx.strokeStyle = '#151a15';
+        for(let x = -player.x % 100; x < canvas.width; x += 100) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+        for(let y = -player.y % 100; y < canvas.height; y += 100) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+
+        crystals.forEach(c => { ctx.fillStyle = c.big ? '#ff00ff' : '#00f2ff'; ctx.fillRect(c.x-player.x+cx-4, c.y-player.y+cy-4, c.big?15:8, c.big?15:8); });
+        goldDrops.forEach(g => { ctx.fillStyle = '#ffd700'; ctx.fillRect(g.x-player.x+cx-5, g.y-player.y+cy-5, 10, 10); });
+        
+        enemies.forEach(e => {
+            ctx.fillStyle = e.hit > 0 ? 'white' : e.color;
+            ctx.beginPath(); ctx.arc(e.x-player.x+cx, e.y-player.y+cy, e.size, 0, Math.PI*2); ctx.fill();
+        });
+
+        ctx.fillStyle = player.skills.weapon >= 6 ? 'red' : '#ffff00';
+        bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x-player.x+cx, b.y-player.y+cy, 6, 0, Math.PI*2); ctx.fill(); });
+
+        ctx.fillStyle = godMode ? '#ffd700' : '#0066ff'; ctx.fillRect(cx-8, cy-8, 16, 20);
+        
+        document.getElementById('lvl').innerText = player.lvl;
+        document.getElementById('exp-fill').style.width = (player.exp/player.nextLvl*100)+'%';
+        document.getElementById('hp-fill').style.width = (player.hp/player.maxHp*100)+'%';
+    }
+    requestAnimationFrame(update);
+</script>
+</body>
+</html>
