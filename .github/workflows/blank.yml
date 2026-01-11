@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Survivor Clone Mobile</title>
+    <style>
+        body { margin: 0; background: #050505; overflow: hidden; font-family: sans-serif; touch-action: none; color: white; }
+        canvas { display: block; }
+        .hidden { display: none !important; }
+
+        /* Экраны */
+        #loading-screen { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #000; z-index: 1000; }
+        #load-bar-container { width: 250px; height: 12px; background: #222; border-radius: 6px; margin: 20px; overflow: hidden; border: 1px solid #444; }
+        #load-bar-fill { width: 0%; height: 100%; background: #00d4ff; box-shadow: 0 0 15px #00d4ff; transition: width 0.1s; }
+
+        /* Интерфейс */
+        #ui { position: absolute; top: 0; left: 0; width: 100%; padding: 15px; box-sizing: border-box; z-index: 10; pointer-events: none; }
+        .top-bar { display: flex; align-items: center; gap: 15px; }
+        #exp-container { flex-grow: 1; height: 12px; background: #1a1a1a; border-radius: 6px; overflow: hidden; border: 1px solid #333; }
+        #exp-fill { width: 0%; height: 100%; background: #00d4ff; }
+        #hp-bar { width: 150px; height: 8px; background: #333; margin-top: 10px; border-radius: 4px; overflow: hidden; }
+        #hp-fill { width: 100%; height: 100%; background: #ff4d4d; transition: width 0.2s; }
+
+        /* Джойстик */
+        #joystick-container { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); width: 120px; height: 120px; z-index: 5; }
+        #joystick-base { width: 100%; height: 100%; background: rgba(255,255,255,0.05); border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(0,212,255,0.2); }
+        #joystick-stick { width: 50px; height: 50px; background: #00d4ff; border-radius: 50%; opacity: 0.5; }
+
+        /* Выбор карт */
+        #level-up { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
+        .modal { background: #151515; padding: 25px; border-radius: 20px; border: 2px solid #00d4ff; width: 85%; max-width: 350px; text-align: center; }
+        .card { background: #222; border: 1px solid #444; padding: 15px; margin: 12px 0; border-radius: 12px; cursor: pointer; pointer-events: all; transition: 0.2s; }
+        .card:active { transform: scale(0.95); background: #333; }
+        .card b { color: #00d4ff; display: block; margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+<div id="loading-screen">
+    <h1 style="color:#00d4ff; letter-spacing: 3px;">ЗАГРУЗКА...</h1>
+    <div id="load-bar-container"><div id="load-bar-fill"></div></div>
+    <div id="load-percent">0%</div>
+</div>
+
+<div id="ui" class="hidden">
+    <div class="top-bar">
+        <div style="font-weight: bold;">LVL <span id="lvl">1</span></div>
+        <div id="exp-container"><div id="exp-fill"></div></div>
+    </div>
+    <div id="hp-bar"><div id="hp-fill"></div></div>
+</div>
+
+<canvas id="game"></canvas>
+
+<div id="joystick-container" class="hidden">
+    <div id="joystick-base"><div id="joystick-stick"></div></div>
+</div>
+
+<div id="level-up" class="hidden">
+    <div class="modal">
+        <h2 style="margin-top:0;">НОВЫЙ УРОВЕНЬ!</h2>
+        <div id="cards-container"></div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    let player = { x: 0, y: 0, hp: 100, maxHp: 100, lvl: 1, exp: 0, nextLvl: 100, speed: 3.5, angle: 0 };
+    let enemies = [], bullets = [], crystals = [], decor = [];
+    let stats = { fireRate: 700, lastShot: 0, damage: 15 };
+    let gameActive = false, isPaused = false;
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Создаем мир
+    for(let i=0; i<120; i++) decor.push({x: Math.random()*4000-2000, y: Math.random()*4000-2000, s: Math.random()*2+1});
+
+    // Система загрузки
+    let p = 0;
+    const loader = setInterval(() => {
+        p += Math.floor(Math.random()*5) + 2;
+        if(p >= 100) {
+            p = 100;
+            clearInterval(loader);
+            setTimeout(initGame, 500);
+        }
+        document.getElementById('load-bar-fill').style.width = p + '%';
+        document.getElementById('load-percent').innerText = p + '%';
+    }, 40);
+
+    function initGame() {
+        document.getElementById('loading-screen').style.display = 'none';
+        document.getElementById('ui').classList.remove('hidden');
+        document.getElementById('joystick-container').classList.remove('hidden');
+        gameActive = true;
+        requestAnimationFrame(update);
+    }
+
+    // Джойстик
+    let joystick = { active: false, x: 0, y: 0 };
+    const stick = document.getElementById('joystick-stick');
+    const jBase = document.getElementById('joystick-base');
+
+    function handleInput(e) {
+        if(!joystick.active && e.type !== 'touchstart') return;
+        const t = e.touches ? e.touches[0] : e;
+        const b = jBase.getBoundingClientRect();
+        const dx = t.clientX - (b.left + b.width/2);
+        const dy = t.clientY - (b.top + b.height/2);
+        const d = Math.min(Math.sqrt(dx*dx+dy*dy), 50);
+        const a = Math.atan2(dy, dx);
+        joystick.x = Math.cos(a) * (d/50);
+        joystick.y = Math.sin(a) * (d/50);
+        player.angle = a;
+        stick.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
+    }
+
+    document.addEventListener('touchstart', (e) => { joystick.active = true; handleInput(e); });
+    document.addEventListener('touchmove', (e) => { if(joystick.active) e.preventDefault(); handleInput(e); }, {passive: false});
+    document.addEventListener('touchend', () => { joystick.active = false; stick.style.transform = 'translate(0,0)'; });
+
+    function update() {
+        if(!gameActive || isPaused) return requestAnimationFrame(update);
+
+        if(joystick.active) {
+            player.x += joystick.x * player.speed;
+            player.y += joystick.y * player.speed;
+        }
+
+        // Авто-стрельба
+        if(Date.now() - stats.lastShot > stats.fireRate && enemies.length > 0) {
+            let nearest = null, minDist = 600;
+            enemies.forEach(e => {
+                let d = Math.sqrt((e.x-player.x)**2 + (e.y-player.y)**2);
+                if(d < minDist) { minDist = d; nearest = e; }
+            });
+            if(nearest) {
+                let a = Math.atan2(nearest.y - player.y, nearest.x - player.x);
+                bullets.push({x: player.x, y: player.y, vx: Math.cos(a)*9, vy: Math.sin(a)*9});
+                stats.lastShot = Date.now();
+            }
+        }
+
+        // Пули и Смерть врагов
+        bullets.forEach((b, bi) => {
+            b.x += b.vx; b.y += b.vy;
+            enemies.forEach((e, ei) => {
+                if(Math.sqrt((b.x-e.x)**2 + (b.y-e.y)**2) < 22) {
+                    e.hp -= stats.damage;
+                    bullets.splice(bi, 1);
+                    if(e.hp <= 0) {
+                        crystals.push({x: e.x, y: e.y});
+                        enemies.splice(ei, 1);
+                    }
+                }
+            });
+            if(Math.abs(b.x-player.x)>1000) bullets.splice(bi, 1);
+        });
+
+        // Враги
+        if(enemies.length < 12 && Math.random() < 0.03) {
+            let a = Math.random()*Math.PI*2;
+            enemies.push({x: player.x+Math.cos(a)*600, y: player.y+Math.sin(a)*600, hp: 30});
+        }
+        enemies.forEach(e => {
+            let a = Math.atan2(player.y-e.y, player.x-e.x);
+            e.x += Math.cos(a)*1.4; e.y += Math.sin(a)*1.4;
+            if(Math.sqrt((e.x-player.x)**2+(e.y-player.y)**2) < 25) player.hp -= 0.3;
+        });
+
+        // Опыт
+        crystals.forEach((c, i) => {
+            if(Math.sqrt((c.x-player.x)**2 + (c.y-player.y)**2) < 40) {
+                player.exp += 35; crystals.splice(i, 1);
+                if(player.exp >= player.nextLvl) { isPaused = true; showLevelUp(); }
+            }
+        });
+
+        if(player.hp <= 0) location.reload();
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function showLevelUp() {
+        const cont = document.getElementById('cards-container');
+        cont.innerHTML = '';
+        document.getElementById('level-up').classList.remove('hidden');
+        const options = [
+            {n: "АТАКА", d: "Урон +20%", f: () => stats.damage += 10},
+            {n: "СКОРОСТЬ", d: "Бег +15%", f: () => player.speed += 0.5},
+            {n: "ЗДОРОВЬЕ", d: "Восстановить HP", f: () => player.hp = 100}
+        ];
+        options.forEach(o => {
+            let d = document.createElement('div'); d.className = 'card';
+            d.innerHTML = `<b>${o.n}</b><span>${o.d}</span>`;
+            d.onclick = () => { o.f(); player.lvl++; player.exp = 0; player.nextLvl *= 1.2; isPaused = false; document.getElementById('level-up').classList.add('hidden'); };
+            cont.appendChild(d);
+        });
+    }
+
+    function draw() {
+        ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        const cx = canvas.width/2, cy = canvas.height/2;
+
+        // Отрисовка мира
+        ctx.fillStyle = '#152515'; decor.forEach(d => ctx.fillRect(d.x-player.x+cx, d.y-player.y+cy, 3, 3));
+        ctx.fillStyle = '#ff4d4d'; enemies.forEach(e => { ctx.beginPath(); ctx.arc(e.x-player.x+cx, e.y-player.y+cy, 15, 0, Math.PI*2); ctx.fill(); });
+        ctx.fillStyle = '#ffff00'; bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x-player.x+cx, b.y-player.y+cy, 4, 0, Math.PI*2); ctx.fill(); });
+        ctx.fillStyle = '#00f2ff'; crystals.forEach(c => ctx.fillRect(c.x-player.x+cx-4, c.y-player.y+cy-4, 8, 8));
+
+        // ЧЕЛОВЕЧЕК
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.fillStyle = '#ffe0bd'; ctx.beginPath(); ctx.arc(0, -18, 9, 0, Math.PI*2); ctx.fill(); // голова
+        ctx.fillStyle = '#0066ff'; ctx.fillRect(-7, -9, 14, 18); // тело
+        ctx.fillStyle = '#333'; ctx.fillRect(-7, 9, 6, 9); ctx.fillRect(1, 9, 6, 9); // ноги
+        ctx.restore();
+
+        document.getElementById('lvl').innerText = player.lvl;
+        document.getElementById('exp-fill').style.width = (player.exp/player.nextLvl*100)+'%';
+        document.getElementById('hp-fill').style.width = player.hp+'%';
+    }
+</script>
+</body>
+</html>
