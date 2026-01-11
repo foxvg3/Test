@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ru" translate="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="google" content="notranslate">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Survivor.io Mega Build V6.1</title>
+    <style>
+        body { 
+            margin: 0; background: #020202; overflow: hidden; 
+            font-family: 'Segoe UI', Tahoma, sans-serif; touch-action: none; 
+            color: white; user-select: none; -webkit-tap-highlight-color: transparent;
+        }
+        canvas { display: block; position: absolute; inset: 0; z-index: 1; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .hud-container { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        #exp-container { 
+            width: 100%; height: 14px; background: rgba(255, 255, 255, 0.05); 
+            border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 7px; overflow: hidden; 
+        }
+        #exp-bar { 
+            width: 0%; height: 100%; background: linear-gradient(90deg, #00d4ff, #005f7a); 
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.5); transition: width 0.3s ease; 
+        }
+        #hp-container { 
+            width: 200px; height: 24px; background: #111; border: 2px solid #333; 
+            border-radius: 12px; overflow: hidden; position: relative; 
+        }
+        #hp-bar { width: 100%; height: 100%; background: linear-gradient(180deg, #ff4d4d, #8b0000); }
+        #hp-text { 
+            position: absolute; width: 100%; text-align: center; font-size: 13px; 
+            font-weight: 900; line-height: 24px; color: white; text-shadow: 1px 1px 3px black; 
+        }
+        .stats-row { display: flex; align-items: center; gap: 25px; font-size: 20px; font-weight: 800; }
+        #joystick-wrapper { 
+            position: absolute; bottom: 12%; left: 50%; transform: translateX(-50%); 
+            width: 160px; height: 160px; z-index: 100; pointer-events: all; 
+        }
+        #joystick-base { 
+            width: 100%; height: 100%; background: rgba(255,255,255,0.05); 
+            border: 2px solid rgba(255, 255, 255, 0.1); border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); 
+        }
+        #joystick-stick { 
+            width: 65px; height: 65px; background: radial-gradient(circle, #00d4ff, #005f7a); 
+            border-radius: 50%; box-shadow: 0 0 30px #00d4ff; 
+        }
+        #screen-overlay { 
+            position: fixed; inset: 0; background: rgba(0,0,0,0.9); 
+            z-index: 1000; display: flex; align-items: center; justify-content: center; 
+        }
+        .menu-card { 
+            background: #111; padding: 50px; border-radius: 40px; border: 1px solid #00d4ff; 
+            text-align: center; width: 90%; max-width: 340px; 
+        }
+        .play-btn { 
+            background: #00d4ff; color: #000; padding: 20px 60px; border-radius: 20px; 
+            font-weight: 900; cursor: pointer; margin-top: 40px; display: inline-block; pointer-events: all; 
+        }
+        #admin-panel { position: fixed; top: 120px; right: 20px; z-index: 500; pointer-events: all; display: flex; flex-direction: column; gap: 10px; }
+        .admin-btn { background: rgba(0,212,255,0.1); border: 1px solid #00d4ff; color: #00d4ff; padding: 10px; border-radius: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+<div id="ui-layer" style="display:none">
+    <div class="hud-container">
+        <div id="exp-container"><div id="exp-bar"></div></div>
+        <div id="hp-container"><div id="hp-bar"></div><div id="hp-text"></div></div>
+        <div class="stats-row">
+            <span>💰 <span id="gold-val">0</span></span>
+            <span>⭐ <span id="lvl-val">1</span></span>
+            <span id="timer-val">00:00</span>
+        </div>
+    </div>
+</div>
+<div id="admin-panel" style="display:none">
+    <button class="admin-btn" onclick="game.addGold(10000)">+10k GOLD</button>
+</div>
+<div id="screen-overlay">
+    <div class="menu-card">
+        <h1 style="color:#00d4ff; font-size: 40px;">SURVIVOR</h1>
+        <div class="play-btn" onclick="game.start()">В БОЙ</div>
+    </div>
+</div>
+<canvas id="gameCanvas"></canvas>
+<div id="joystick-wrapper">
+    <div id="joystick-base"><div id="joystick-stick"></div></div>
+</div>
+<script>
+"use strict";
+const game = {
+    active: false, width: 0, height: 0, startTime: 0, elapsed: 0,
+    player: { x: 0, y: 0, hp: 400, maxHp: 400, speed: 4.8, gold: 0, exp: 0, nextExp: 100, lvl: 1, size: 34, dmg: 70, pickRadius: 120 },
+    input: { joyActive: false, dx: 0, dy: 0, angle: 0 },
+    entities: { enemies: [], bullets: [], items: [], particles: [], damageTexts: [] },
+    timers: { spawn: 0, shoot: 0, lastFrame: 0 },
+    canvas: document.getElementById('gameCanvas'), ctx: null, bgTile: null,
+    init() {
+        this.ctx = this.canvas.getContext('2d', { alpha: false });
+        this.resize(); this.createBgTile();
+        window.addEventListener('resize', () => this.resize());
+        this.setupControls(); this.updateUI();
+    },resize() {
+        this.width = window.innerWidth;
+        this.height = window.innerHeight;
+        this.canvas.width = this.width;
+        this.canvas.height = this.height;
+    },
+    createBgTile() {
+        const size = 128;
+        const t = document.createElement('canvas');
+        t.width = size; t.height = size;
+        const tc = t.getContext('2d');
+        tc.fillStyle = '#111811';
+        tc.fillRect(0, 0, size, size);
+        tc.strokeStyle = '#0a0d0a';
+        tc.lineWidth = 2;
+        tc.strokeRect(0, 0, size, size);
+        tc.fillStyle = 'rgba(255,255,255,0.02)';
+        for(let i=0; i<10; i++) tc.fillRect(Math.random()*size, Math.random()*size, 2, 2);
+        this.bgTile = t;
+    },
+    start() {
+        document.getElementById('screen-overlay').style.display = 'none';
+        document.getElementById('ui-layer').style.display = 'block';
+        document.getElementById('admin-panel').style.display = 'flex';
+        this.active = true;
+        this.startTime = performance.now();
+        this.timers.lastFrame = performance.now();
+        this.updateUI();
+        requestAnimationFrame((t) => this.loop(t));
+    },
+    addGold(v) {
+        this.player.gold += v;
+        this.addDamageText(this.player.x, this.player.y - 40, `+${v} GOLD`, '#ffd700');
+        this.updateUI();
+    },
+    levelUp() {
+        this.player.lvl++;
+        this.player.exp = 0;
+        this.player.nextExp = Math.floor(this.player.nextExp * 1.7);
+        this.player.maxHp += 75;
+        this.player.hp = this.player.maxHp;
+        this.player.dmg += 30;
+        this.player.pickRadius += 10;
+        this.addDamageText(this.player.x, this.player.y - 60, "LEVEL UP!", "#00d4ff");
+        this.updateUI();
+    },
+    updateUI() {
+        const gVal = document.getElementById('gold-val');
+        const lVal = document.getElementById('lvl-val');
+        const hFill = document.getElementById('hp-bar');
+        const hText = document.getElementById('hp-text');
+        const eFill = document.getElementById('exp-bar');
+        if(gVal) gVal.innerText = Math.floor(this.player.gold);
+        if(lVal) lVal.innerText = this.player.lvl;
+        if(hFill) hFill.style.width = (this.player.hp / this.player.maxHp * 100) + '%';
+        if(hText) hText.innerText = `${Math.ceil(this.player.hp)} / ${this.player.maxHp}`;
+        if(eFill) eFill.style.width = (this.player.exp / this.player.nextExp * 100) + '%';
+    },
+    setupControls() {
+        const wrap = document.getElementById('joystick-wrapper');
+        const stick = document.getElementById('joystick-stick');
+        const base = document.getElementById('joystick-base');
+        const moveHandler = (e) => {
+            if(!this.active) return;
+            const touch = e.touches[0];
+            const rect = base.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const dx = touch.clientX - cx;
+            const dy = touch.clientY - cy;
+            const dist = Math.hypot(dx, dy);
+            const max = rect.width / 2;
+            const angle = Math.atan2(dy, dx);
+            this.input.joyActive = true;
+            const clampedDist = Math.min(dist, max);
+            this.input.dx = Math.cos(angle) * (clampedDist / max);
+            this.input.dy = Math.sin(angle) * (clampedDist / max);
+            stick.style.transform = `translate(${Math.cos(angle)*clampedDist}px, ${Math.sin(angle)*clampedDist}px)`;
+        };
+        wrap.addEventListener('touchstart', moveHandler);
+        wrap.addEventListener('touchmove', (e) => { e.preventDefault(); moveHandler(e); }, { passive: false });
+        const stopHandler = () => {
+            this.input.joyActive = false;
+            this.input.dx = 0; this.input.dy = 0;
+            stick.style.transform = `translate(0,0)`;
+        };
+        wrap.addEventListener('touchend', stopHandler);
+        wrap.addEventListener('touchcancel', stopHandler);
+    },
+    addDamageText(x, y, text, color) {
+        this.entities.damageTexts.push({ x, y, text, color, life: 1.0, vy: -2.5 });
+    },
+    loop(now) {
+        if (!this.active) return;
+        const dt = now - this.timers.lastFrame;
+        this.timers.lastFrame = now;
+        this.elapsed = now - this.startTime;
+        this.update(dt);
+        this.render();
+        requestAnimationFrame((t) => this.loop(t));
+    },update(dt) {
+        if (this.input.joyActive) {
+            this.player.x += this.input.dx * this.player.speed;
+            this.player.y += this.input.dy * this.player.speed;
+        }
+        const totalSec = Math.floor(this.elapsed / 1000);
+        const mins = Math.floor(totalSec / 60).toString().padStart(2, '0');
+        const secs = (totalSec % 60).toString().padStart(2, '0');
+        const tEl = document.getElementById('timer-val');
+        if (tEl) tEl.innerText = `${mins}:${secs}`;
+        this.timers.shoot += dt;
+        if (this.timers.shoot > 550) {
+            this.logicShoot();
+            this.timers.shoot = 0;
+        }
+        this.timers.spawn += dt;
+        const sRate = Math.max(300, 1100 - (this.player.lvl * 45));
+        if (this.timers.spawn > sRate && this.entities.enemies.length < 75) {
+            this.logicSpawn();
+            this.timers.spawn = 0;
+        }
+        this.updateBullets();
+        this.updateEnemies(dt);
+        this.updateItems();
+        this.updateParticles(dt);
+        this.updateTexts();
+        if (this.player.exp >= this.player.nextExp) this.levelUp();
+    },
+    logicShoot() {
+        if (this.entities.enemies.length === 0) return;
+        let target = null;
+        let minD = 850;
+        for (let e of this.entities.enemies) {
+            const d = Math.hypot(e.x - this.player.x, e.y - this.player.y);
+            if (d < minD) { minD = d; target = e; }
+        }
+        if (target) {
+            const a = Math.atan2(target.y - this.player.y, target.x - this.player.x);
+            this.entities.bullets.push({ x: this.player.x, y: this.player.y, vx: Math.cos(a) * 17, vy: Math.sin(a) * 17, dmg: this.player.dmg });
+        }
+    },
+    logicSpawn() {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.max(this.width, this.height) + 100;
+        const elite = Math.random() > 0.9;
+        this.entities.enemies.push({
+            x: this.player.x + Math.cos(a) * d,
+            y: this.player.y + Math.sin(a) * d,
+            hp: (elite ? 700 : 130) + (this.player.lvl * 30),
+            maxHp: (elite ? 700 : 130) + (this.player.lvl * 30),
+            speed: (elite ? 2.1 : 2.6) + (this.player.lvl * 0.05),
+            size: elite ? 30 : 22,
+            color: elite ? '#ffaa00' : '#ff4d4d',
+            isElite: elite
+        });
+    },
+    updateBullets() {
+        for (let i = this.entities.bullets.length - 1; i >= 0; i--) {
+            const b = this.entities.bullets[i];
+            b.x += b.vx; b.y += b.vy;
+            if (Math.hypot(b.x - this.player.x, b.y - this.player.y) > 1600) this.entities.bullets.splice(i, 1);
+        }
+    },
+    updateEnemies(dt) {
+        for (let i = this.entities.enemies.length - 1; i >= 0; i--) {
+            const e = this.entities.enemies[i];
+            const dx = this.player.x - e.x, dy = this.player.y - e.y, dist = Math.hypot(dx, dy);
+            e.x += (dx / dist) * e.speed; e.y += (dy / dist) * e.speed;
+            for (let j = this.entities.bullets.length - 1; j >= 0; j--) {
+                const b = this.entities.bullets[j];
+                if (Math.hypot(b.x - e.x, b.y - e.y) < e.size + 8) {
+                    const dmg = Math.floor(b.dmg * (0.8 + Math.random() * 0.4));
+                    e.hp -= dmg;
+                    this.addDamageText(e.x, e.y - 15, dmg, e.isElite ? '#ffaa00' : '#fff');
+                    this.entities.bullets.splice(j, 1);
+                }
+            }
+            if (dist < 38) {
+                this.player.hp -= 0.8;
+                if (Math.random() > 0.9) this.updateUI();
+                if (this.player.hp <= 0) this.gameOver();
+            }
+            if (e.hp <= 0) {
+                this.player.gold += e.isElite ? 100 : 20;
+                this.entities.items.push({ x: e.x, y: e.y });
+                this.entities.enemies.splice(i, 1);
+                this.updateUI();
+            }
+        }
+    },
+    updateItems() {
+        for (let i = this.entities.items.length - 1; i >= 0; i--) {
+            const it = this.entities.items[i];
+            const d = Math.hypot(it.x - this.player.x, it.y - this.player.y);
+            if (d < this.player.pickRadius) {
+                it.x += (this.player.x - it.x) / d * 14;
+                it.y += (this.player.y - it.y) / d * 14;
+            }
+            if (d < 25) { this.player.exp += 50; this.entities.items.splice(i, 1); this.updateUI(); }
+        }
+    },
+    updateParticles(dt) {
+        for (let i = this.entities.particles.length - 1; i >= 0; i--) {
+            const p = this.entities.particles[i];
+            p.life -= dt; p.x += p.vx; p.y += p.vy;
+            if (p.life <= 0) this.entities.particles.splice(i, 1);
+        }
+    },
+    updateTexts() {
+        for (let i = this.entities.damageTexts.length - 1; i >= 0; i--) {
+            const t = this.entities.damageTexts[i];
+            t.life -= 0.025; t.y += t.vy;
+            if (t.life <= 0) this.entities.damageTexts.splice(i, 1);
+        }
+    },
+    render() {
+        const cx = this.width / 2, cy = this.height / 2;
+        this.ctx.fillStyle = '#020202';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+        this.ctx.save();
+        const tw = 128;
+        const ox = Math.floor((-this.player.x % tw) - tw), oy = Math.floor((-this.player.y % tw) - tw);
+        for (let x = ox; x < this.width + tw; x += tw) {
+            for (let y = oy; y < this.height + tw; y += tw) { this.ctx.drawImage(this.bgTile, x, y); }
+        }
+        this.ctx.fillStyle = '#00ffd4';
+        for (let it of this.entities.items) {
+            this.ctx.beginPath(); this.ctx.arc(it.x - this.player.x + cx, it.y - this.player.y + cy, 6, 0, Math.PI * 2); this.ctx.fill();
+        }
+        this.ctx.fillStyle = '#ff0';
+        for (let b of this.entities.bullets) {
+            this.ctx.fillRect(b.x - this.player.x + cx - 4, b.y - this.player.y + cy - 4, 10, 10);
+        }
+        for (let e of this.entities.enemies) {
+            const ex = e.x - this.player.x + cx, ey = e.y - this.player.y + cy;
+            this.ctx.fillStyle = e.color;
+            this.ctx.beginPath(); this.ctx.arc(ex, ey, e.size, 0, Math.PI * 2); this.ctx.fill();
+            this.ctx.fillStyle = 'rgba(0,0,0,0.5)'; this.ctx.fillRect(ex - 20, ey - e.size - 10, 40, 5);
+            this.ctx.fillStyle = '#f33'; this.ctx.fillRect(ex - 20, ey - e.size - 10, (e.hp / e.maxHp) * 40, 5);
+        }
+        this.ctx.fillStyle = '#00d4ff'; this.ctx.shadowBlur = 25; this.ctx.shadowColor = '#00d4ff';
+        this.ctx.fillRect(cx - 17, cy - 17, 34, 34); this.ctx.shadowBlur = 0;
+        this.ctx.textAlign = 'center';
+        for (let t of this.entities.damageTexts) {
+            this.ctx.globalAlpha = t.life; this.ctx.fillStyle = t.color; this.ctx.font = 'bold 20px Arial';
+            this.ctx.fillText(t.text, t.x - this.player.x + cx, t.y - this.player.y + cy);
+        }
+        this.ctx.globalAlpha = 1.0; this.ctx.restore();
+    },
+    gameOver() {
+        this.active = false;
+        alert(`GAME OVER\nLVL: ${this.player.lvl}\nGOLD: ${this.player.gold}`);
+        location.reload();
+    }
+};
+game.init();
+</script>
+</body>
+</html>
