@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Survivor.io - Skill Levels & Damage</title>
+    <style>
+        body { margin: 0; background: #050505; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; color: white; user-select: none; }
+        canvas { display: block; }
+        .hidden { display: none !important; }
+        #ui { position: absolute; top: 0; left: 0; width: 100%; padding: 10px; box-sizing: border-box; z-index: 10; pointer-events: none; }
+        .top-bar { display: flex; align-items: center; gap: 10px; }
+        #exp-bar { flex-grow: 1; height: 10px; background: #1a1a1a; border: 1px solid #333; border-radius: 5px; overflow: hidden; }
+        #exp-fill { width: 0%; height: 100%; background: #00d4ff; box-shadow: 0 0 10px #00d4ff; }
+        #timer { font-size: 20px; font-weight: bold; text-align: center; margin-top: 5px; color: #fff; }
+        #hp-bar { width: 120px; height: 12px; background: #333; margin-top: 5px; border-radius: 6px; border: 2px solid #000; overflow: hidden; }
+        #hp-fill { width: 100%; height: 100%; background: #ff4d4d; transition: width 0.2s; }
+        
+        #dev-panel { position: absolute; bottom: 10px; right: 10px; z-index: 20; display: none; flex-direction: column; gap: 5px; pointer-events: all; }
+        .dev-btn { background: rgba(0,0,0,0.8); border: 1px solid #00d4ff; color: #00d4ff; padding: 8px; border-radius: 5px; font-size: 10px; }
+
+        #joystick-container { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); width: 100px; height: 100px; z-index: 5; }
+        #joystick-base { width: 100%; height: 100%; background: rgba(255,255,255,0.05); border-radius: 50%; border: 2px solid rgba(0,212,255,0.2); display: flex; align-items: center; justify-content: center; }
+        #joystick-stick { width: 40px; height: 40px; background: #00d4ff; border-radius: 50%; opacity: 0.6; }
+        
+        #level-up { position: fixed; inset: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 100; }
+        .modal { background: #1a1a1a; padding: 20px; border-radius: 15px; border: 3px solid #00d4ff; width: 85%; max-width: 400px; text-align: center; }
+        .card { background: #2a2a2a; border: 2px solid #444; padding: 12px; margin: 10px 0; border-radius: 10px; cursor: pointer; pointer-events: all; text-align: left; }
+        .card b { color: #00d4ff; display: block; margin-bottom: 4px; }
+        .stars { color: #ffd700; font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <div class="top-bar">
+        <div style="font-weight: bold; color: #00d4ff;">Lvl <span id="lvl">1</span></div>
+        <div id="exp-bar"><div id="exp-fill"></div></div>
+    </div>
+    <div id="hp-bar"><div id="hp-fill"></div></div>
+    <div id="timer">00:00</div>
+</div>
+
+<div id="dev-panel">
+    <div class="dev-btn" onclick="timeOffset += 60">+1 МИН</div>
+    <div class="dev-btn" onclick="devKillAll()">BOOM</div>
+    <div class="dev-btn" onclick="showLevelUp()">LVL UP</div>
+    <div id="god-btn" class="dev-btn" onclick="godMode=!godMode; this.innerText='БОГ: '+(godMode?'ВКЛ':'ВЫКЛ')">БОГ: ВЫКЛ</div>
+</div>
+
+<canvas id="game"></canvas>
+<div id="joystick-container"><div id="joystick-base"><div id="joystick-stick"></div></div></div>
+<div id="level-up" class="hidden"><div class="modal"><h2>НОВЫЙ НАВЫК</h2><div id="cards-container"></div></div></div>
+
+<script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    let gameActive = true, isPaused = false, godMode = false;
+    let startTime = Date.now(), timeOffset = 0, lastBossSpawn = 0;
+
+    if (window.location.search.includes('ad')) document.getElementById('dev-panel').style.display = 'flex';
+
+    const player = {
+        x: 0, y: 0, hp: 100, maxHp: 100, lvl: 1, exp: 0, nextLvl: 100, speed: 3.5,
+        skills: { 
+            weapon: 1,  // Базовый выстрел
+            field: 0,   // Поле
+            brick: 0,   // Кирпич
+            bullets: 1  // Кол-во пуль (веер)
+        }
+    };
+
+    let enemies = [], bullets = [], bricks = [], crystals = [], damageTexts = [];
+    let stats = { fireRate: 800, lastShot: 0, lastBrick: 0, damage: 15 };
+
+    function devKillAll() { enemies.forEach(e => crystals.push({x:e.x, y:e.y, big:e.boss})); enemies = []; }
+
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Джойстик
+    let joystick = { active: false, x: 0, y: 0 };
+    const stick = document.getElementById('joystick-stick'), jBase = document.getElementById('joystick-base');
+    function handleInput(e) {
+        const t = e.touches ? e.touches[0] : e;
+        const b = jBase.getBoundingClientRect();
+        const dx = t.clientX - (b.left + b.width/2), dy = t.clientY - (b.top + b.height/2);
+        const d = Math.min(Math.sqrt(dx*dx+dy*dy), 40);
+        const a = Math.atan2(dy, dx);
+        joystick.x = Math.cos(a) * (d/40); joystick.y = Math.sin(a) * (d/40);
+        stick.style.transform = `translate(${Math.cos(a)*d}px, ${Math.sin(a)*d}px)`;
+    }
+    document.addEventListener('touchstart', e => { joystick.active = true; handleInput(e); });
+    document.addEventListener('touchmove', e => { if(joystick.active) { e.preventDefault(); handleInput(e); } }, {passive: false});
+    document.addEventListener('touchend', () => { joystick.active = false; stick.style.transform = 'translate(0,0)'; });
+
+    function addDamageText(x, y, dmg) {
+        damageTexts.push({ x, y, text: Math.floor(dmg), life: 30, offset: 0 });
+    }
+
+    function spawnEnemy() {
+        let a = Math.random()*Math.PI*2, dist = 600, type = Math.random();
+        let e = { x: player.x+Math.cos(a)*dist, y: player.y+Math.sin(a)*dist, boss: false, hit: 0 };
+        if (type < 0.15) { e.hp = 180 + player.lvl*20; e.speed = 0.7; e.size = 25; e.color = '#8b0000'; } 
+        else if (type < 0.35) { e.hp = 12; e.speed = 3.6; e.size = 10; e.color = '#ff8c00'; } 
+        else { e.hp = 35 + player.lvl*6; e.speed = 1.5; e.size = 16; e.color = '#ff4444'; }
+        enemies.push(e);
+    }
+
+    function update() {
+        if(!gameActive || isPaused) return requestAnimationFrame(update);
+        let elapsed = Math.floor((Date.now() - startTime) / 1000) + timeOffset;
+        document.getElementById('timer').innerText = `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${(elapsed%60).toString().padStart(2,'0')}`;
+
+        if (elapsed > 0 && elapsed % 300 === 0 && Math.floor(elapsed/60) !== lastBossSpawn) {
+            enemies.push({x: player.x+400, y: player.y, hp: 4000, boss: true, size: 55, color: '#ff0000', speed: 1.1, hit: 0});
+            lastBossSpawn = Math.floor(elapsed/60);
+        }
+
+        if(joystick.active) { player.x += joystick.x * player.speed; player.y += joystick.y * player.speed; }
+
+        // Оружие (Skill: Weapon)
+        let currentDmg = stats.damage + (player.skills.weapon * 5);
+        let shotCooldown = stats.fireRate - (player.skills.weapon * 50);
+
+        if(Date.now() - stats.lastShot > shotCooldown) {
+            let near = getNearestEnemy(650);
+            if(near) {
+                let angle = Math.atan2(near.y - player.y, near.x - player.x);
+                for(let i=0; i < player.skills.bullets; i++) {
+                    let spread = (i - (player.skills.bullets-1)/2) * 0.15;
+                    bullets.push({
+                        x: player.x, y: player.y, 
+                        vx: Math.cos(angle+spread)*(10+player.skills.weapon), 
+                        vy: Math.sin(angle+spread)*(10+player.skills.weapon),
+                        pen: player.skills.weapon >= 5 ? 3 : 1 // Пробитие на 5 звездах
+                    });
+                }
+                stats.lastShot = Date.now();
+            }
+        }
+
+        // Кирпич (Skill: Brick)
+        if(player.skills.brick > 0 && Date.now() - stats.lastBrick > (2500 / player.skills.brick)) {
+            bricks.push({x: player.x, y: player.y, vy: -14, vx: (Math.random()-0.5)*12, g: 0.5});
+            stats.lastBrick = Date.now();
+        }
+
+        // Логика снарядов
+        bullets.forEach((b, bi) => {
+            b.x += b.vx; b.y += b.vy;
+            enemies.forEach((e, ei) => {
+                if(Math.sqrt((b.x-e.x)**2 + (b.y-e.y)**2) < e.size) {
+                    e.hp -= currentDmg; e.hit = 5;
+                    addDamageText(e.x, e.y, currentDmg);
+                    b.pen--;
+                    if(b.pen <= 0) bullets.splice(bi, 1);
+                    if(e.hp <= 0) { crystals.push({x: e.x, y: e.y, big: e.boss}); enemies.splice(ei, 1); }
+                }
+            });
+            if(Math.abs(b.x-player.x) > 900) bullets.splice(bi, 1);
+        });
+
+        bricks.forEach((b, bi) => {
+            b.x += b.vx; b.y += b.vy; b.vy += b.g;
+            enemies.forEach(e => {
+                if(Math.sqrt((b.x-e.x)**2 + (b.y-e.y)**2) < e.size + 15) {
+                    let d = 40 + (player.skills.brick * 20);
+                    e.hp -= d; e.hit = 5;
+                    addDamageText(e.x, e.y, d);
+                }
+            });
+            if(b.y > player.y + 700) bricks.splice(bi, 1);
+        });
+
+        // Поле
+        if(player.skills.field > 0) {
+            let r = 80 + (player.skills.field * 25);
+            enemies.forEach(e => {
+                if(Math.sqrt((e.x-player.x)**2 + (e.y-player.y)**2) < r) {
+                    let d = 0.5 + (player.skills.field * 0.2);
+                    e.hp -= d;
+                    if(Math.random() > 0.95) addDamageText(e.x, e.y, d * 10);
+                }
+            });
+        }
+
+        if(enemies.length < 35) spawnEnemy();
+        enemies.forEach(e => {
+            let a = Math.atan2(player.y-e.y, player.x-e.x);
+            e.x += Math.cos(a)*e.speed; e.y += Math.sin(a)*e.speed;
+            if(e.hit > 0) e.hit--;
+            if(Math.sqrt((e.x-player.x)**2+(e.y-player.y)**2) < e.size + 10) {
+                if(!godMode) player.hp -= e.boss ? 1.8 : 0.4;
+                if(player.hp <= 0) location.reload();
+            }
+        });
+
+        crystals.forEach((c, i) => {
+            if(Math.sqrt((c.x-player.x)**2 + (c.y-player.y)**2) < 50) {
+                player.exp += c.big ? 1500 : 45; crystals.splice(i, 1);
+                if(player.exp >= player.nextLvl) showLevelUp();
+            }
+        });
+
+        damageTexts.forEach((t, i) => { t.life--; t.offset += 1; if(t.life <= 0) damageTexts.splice(i, 1); });
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function getNearestEnemy(range) {
+        let near = null, minD = range;
+        enemies.forEach(e => {
+            let d = Math.sqrt((e.x-player.x)**2 + (e.y-player.y)**2);
+            if(d < minD) { minD = d; near = e; }
+        });
+        return near;
+    }
+
+    function showLevelUp() {
+        isPaused = true;
+        const cont = document.getElementById('cards-container'); cont.innerHTML = '';
+        document.getElementById('level-up').classList.remove('hidden');
+        
+        const skills = [
+            { id: 'weapon', n: "ОСНОВНОЙ ВЫСТРЕЛ", d: "Урон и скорость полета", max: 5 },
+            { id: 'field', n: "СИЛОВОЕ ПОЛЕ", d: "Сжигает врагов вокруг", max: 5 },
+            { id: 'brick', n: "КИРПИЧ", d: "Летит вверх и падает", max: 5 },
+            { id: 'bullets', n: "ВЕЕР ПУЛЬ", d: "Количество снарядов", max: 5 }
+        ];
+
+        skills.filter(s => player.skills[s.id] < s.max).sort(()=>0.5-Math.random()).slice(0,3).forEach(s => {
+            let cur = player.skills[s.id];
+            let d = document.createElement('div'); d.className = 'card';
+            d.innerHTML = `<b>${s.n} <span class="stars">${'★'.repeat(cur+1)}</span></b><span>${s.d}</span>`;
+            d.onclick = () => { 
+                player.skills[s.id]++; 
+                player.lvl++; player.exp = 0; player.nextLvl *= 1.35; 
+                isPaused = false; document.getElementById('level-up').classList.add('hidden'); 
+            };
+            cont.appendChild(d);
+        });
+        if(cont.innerHTML === '') { // Если всё на максе
+            let d = document.createElement('div'); d.className = 'card'; d.innerHTML = "<b>ЛЕЧЕНИЕ</b><span>Восстановить HP</span>";
+            d.onclick = () => { player.hp = player.maxHp; isPaused = false; document.getElementById('level-up').classList.add('hidden'); };
+            cont.appendChild(d);
+        }
+    }
+
+    function draw() {
+        ctx.fillStyle = '#0a0d0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+        const cx = canvas.width/2, cy = canvas.height/2;
+
+        ctx.strokeStyle = '#151a15';
+        for(let x = -player.x % 100; x < canvas.width; x += 100) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+        for(let y = -player.y % 100; y < canvas.height; y += 100) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+
+        crystals.forEach(c => { ctx.fillStyle = c.big ? '#ff00ff' : '#00f2ff'; ctx.fillRect(c.x-player.x+cx-4, c.y-player.y+cy-4, c.big ? 18 : 8, c.big ? 18 : 8); });
+        
+        enemies.forEach(e => {
+            ctx.fillStyle = e.hit > 0 ? 'white' : e.color;
+            ctx.beginPath(); ctx.arc(e.x-player.x+cx, e.y-player.y+cy, e.size, 0, Math.PI*2); ctx.fill();
+            if(e.boss) { ctx.fillStyle = '#ffd700'; ctx.fillRect(e.x-player.x+cx-20, e.y-player.y+cy-e.size-20, 40, 10); }
+        });
+
+        ctx.fillStyle = '#ffff00'; bullets.forEach(b => { ctx.beginPath(); ctx.arc(b.x-player.x+cx, b.y-player.y+cy, 6, 0, Math.PI*2); ctx.fill(); });
+        ctx.fillStyle = '#ff8800'; bricks.forEach(b => ctx.fillRect(b.x-player.x+cx-10, b.y-player.y+cy-10, 20, 14));
+
+        if(player.skills.field > 0) {
+            ctx.strokeStyle = `rgba(0, 212, 255, ${0.1 + player.skills.field * 0.05})`; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(cx, cy, 80 + player.skills.field*25, 0, Math.PI*2); ctx.stroke();
+        }
+
+        // Числа урона
+        ctx.font = 'bold 16px Arial'; ctx.textAlign = 'center';
+        damageTexts.forEach(t => {
+            ctx.fillStyle = `rgba(255, 255, 255, ${t.life/30})`;
+            ctx.fillText(t.text, t.x-player.x+cx, t.y-player.y+cy - 20 - t.offset);
+        });
+
+        ctx.fillStyle = '#ffe0bd'; ctx.beginPath(); ctx.arc(cx, cy-18, 10, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = godMode ? '#ffd700' : '#0066ff'; ctx.fillRect(cx-8, cy-8, 16, 20);
+
+        document.getElementById('lvl').innerText = player.lvl;
+        document.getElementById('exp-fill').style.width = (player.exp/player.nextLvl*100)+'%';
+        document.getElementById('hp-fill').style.width = (player.hp/player.maxHp*100)+'%';
+    }
+    requestAnimationFrame(update);
+</script>
+</body>
+</html>
