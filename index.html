@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ru" translate="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="google" content="notranslate">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Survivor.io Ultimate Stable</title>
+    <style>
+        body { margin: 0; background: #020202; overflow: hidden; font-family: 'Segoe UI', sans-serif; touch-action: none; color: white; user-select: none; }
+        canvas { display: block; position: absolute; inset: 0; z-index: 1; }
+        #ui { position: absolute; top: 0; left: 0; width: 100%; padding: 15px; box-sizing: border-box; z-index: 10; pointer-events: none; }
+        #exp-bar { width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+        #exp-fill { width: 0%; height: 100%; background: #00d4ff; box-shadow: 0 0 10px #00d4ff; transition: width 0.3s; }
+        #hp-bar { width: 150px; height: 14px; background: #333; border-radius: 7px; border: 2px solid #000; overflow: hidden; }
+        #hp-fill { width: 100%; height: 100%; background: #ff4d4d; }
+        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: flex; align-items: center; justify-content: center; }
+        .modal { background: #111; padding: 30px; border-radius: 20px; border: 2px solid #00d4ff; text-align: center; width: 85%; max-width: 320px; box-shadow: 0 0 30px rgba(0,212,255,0.2); }
+        .btn { background: #00d4ff; color: #000; padding: 15px 30px; border-radius: 12px; cursor: pointer; font-weight: bold; margin-top: 20px; display: inline-block; pointer-events: all; text-transform: uppercase; letter-spacing: 1px; }
+        #joystick-container { position: absolute; bottom: 60px; left: 50%; transform: translateX(-50%); width: 120px; height: 120px; z-index: 50; }
+        #joystick-base { width: 100%; height: 100%; background: rgba(255,255,255,0.03); border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; }
+        #joystick-stick { width: 50px; height: 50px; background: #00d4ff; border-radius: 50%; opacity: 0.4; pointer-events: none; }
+        .stat-line { display: flex; justify-content: space-between; margin-top: 10px; font-weight: bold; font-size: 14px; }
+        #adm-btn { position: fixed; top: 60px; right: 15px; background: rgba(0,212,255,0.15); padding: 8px 12px; border-radius: 8px; z-index: 60; cursor: pointer; pointer-events: all; border: 1px solid #00d4ff; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div id="ui" style="display:none">
+    <div id="exp-bar"><div id="exp-fill"></div></div>
+    <div id="hp-bar"><div id="hp-fill"></div></div>
+    <div class="stat-line">
+        <span style="color:#ffd700">💰 <span id="g-ui">0</span></span>
+        <span>LVL: <span id="l-ui">1</span></span>
+        <span id="t-ui">00:00</span>
+    </div>
+</div>
+
+<div id="adm-btn" onclick="cheat()">CHEAT +5k</div>
+
+<div id="start-screen" class="overlay">
+    <div class="modal">
+        <h1 style="margin:0; color:#00d4ff; font-size:28px;">SURVIVOR.IO</h1>
+        <p style="color:#666; font-size:14px;">Stable Build v4.0</p>
+        <div class="btn" onclick="startGame()">НАЧАТЬ ВЫЖИВАНИЕ</div>
+    </div>
+</div>
+
+<canvas id="game"></canvas>
+
+<div id="joystick-container">
+    <div id="joystick-base"><div id="joystick-stick"></div></div>
+</div>
+
+<script>
+// --- ПЕРЕМЕННЫЕ ---
+let gameActive = false, lastTime = 0, enemyTimer = 0, shootTimer = 0;
+let player = { x: 0, y: 0, hp: 200, maxHp: 200, speed: 4, gold: 0, exp: 0, nextExp: 100, lvl: 1, dmg: 50 };
+let enemies = [], bullets = [], crystals = [];
+let joy = { active: false, dx: 0, dy: 0 }, canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
+
+// --- ГРАФИКА ФОНА ---
+const tSize = 120, tile = document.createElement('canvas'), tCtx = tile.getContext('2d');
+tile.width = tSize; tile.height = tSize;
+tCtx.fillStyle = '#1a1f1a'; tCtx.fillRect(0, 0, tSize, tSize);
+tCtx.strokeStyle = 'rgba(0,0,0,0.3)'; tCtx.strokeRect(0, 0, tSize, tSize);
+for(let i=0; i<3; i++) { tCtx.fillStyle='rgba(255,255,255,0.03)'; tCtx.fillRect(Math.random()*tSize, Math.random()*tSize, 3, 3); }
+
+function startGame() {
+    document.getElementById('start-screen').style.display = 'none';
+    document.getElementById('ui').style.display = 'block';
+    resize(); gameActive = true; lastTime = performance.now();
+    requestAnimationFrame(loop);
+}
+
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+
+function cheat() { player.gold += 5000; player.exp += 500; updateUI(); checkLvl(); }
+
+function updateUI() {
+    document.getElementById('g-ui').innerText = Math.floor(player.gold);
+    document.getElementById('l-ui').innerText = player.lvl;
+    document.getElementById('hp-fill').style.width = (player.hp / player.maxHp * 100) + '%';
+    document.getElementById('exp-fill').style.width = (player.exp / player.nextExp * 100) + '%';
+}
+
+function checkLvl() {
+    if(player.exp >= player.nextExp) {
+        player.lvl++; player.exp = 0; player.nextExp *= 1.4;
+        player.maxHp += 20; player.hp = player.maxHp;
+        player.dmg += 15; updateUI();
+    }
+}
+
+// --- УПРАВЛЕНИЕ ---
+function handleTouch(e) {
+    if(!gameActive) return;
+    const t = e.touches[0], b = document.getElementById('joystick-base').getBoundingClientRect();
+    const cX = b.left + b.width/2, cY = b.top + b.height/2;
+    const dx = t.clientX - cX, dy = t.clientY - cY, dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50), angle = Math.atan2(dy, dx);
+    joy.active = true; joy.dx = Math.cos(angle) * (dist/50); joy.dy = Math.sin(angle) * (dist/50);
+    document.getElementById('joystick-stick').style.transform = `translate(${Math.cos(angle)*dist}px, ${Math.sin(angle)*dist}px)`;
+}
+
+document.addEventListener('touchstart', e => { if(e.target.closest('#joystick-container')) handleTouch(e); });
+document.addEventListener('touchmove', e => { if(joy.active) { e.preventDefault(); handleTouch(e); } }, {passive: false});
+document.addEventListener('touchend', () => { 
+    joy.active = false; joy.dx = 0; joy.dy = 0; 
+    document.getElementById('joystick-stick').style.transform = 'translate(0,0)'; 
+});
+
+// --- ЛОГИКА ---
+function loop(now) {
+    if(!gameActive) return;
+    const dt = now - lastTime; lastTime = now;
+
+    if(joy.active) { player.x += joy.dx * player.speed; player.y += joy.dy * player.speed; }
+
+    // Стрельба (авто)
+    shootTimer += dt;
+    if(shootTimer > 700) {
+        let nearest = null, minDist = 500;
+        enemies.forEach(e => {
+            let d = Math.sqrt((e.x-player.x)**2 + (e.y-player.y)**2);
+            if(d < minDist) { minDist = d; nearest = e; }
+        });
+        if(nearest) {
+            let a = Math.atan2(nearest.y - player.y, nearest.x - player.x);
+            bullets.push({ x: player.x, y: player.y, vx: Math.cos(a)*12, vy: Math.sin(a)*12 });
+        }
+        shootTimer = 0;
+    }
+
+    // Враги
+    enemyTimer += dt;
+    if(enemyTimer > 1200 && enemies.length < 40) {
+        const a = Math.random()*Math.PI*2;
+        enemies.push({ x: player.x+Math.cos(a)*700, y: player.y+Math.sin(a)*700, hp: 100 + player.lvl*10 });
+        enemyTimer = 0;
+    }
+
+    updateAndDraw(now);
+    requestAnimationFrame(loop);
+}
+
+function updateAndDraw(now) {
+    const cX = canvas.width/2, cY = canvas.height/2;
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+
+    // Фон
+    const offX = -player.x % tSize, offY = -player.y % tSize;
+    for(let x=offX-tSize; x<canvas.width+tSize; x+=tSize)
+        for(let y=offY-tSize; y<canvas.height+tSize; y+=tSize) ctx.drawImage(tile, x, y);
+
+    // Пули
+    ctx.fillStyle = '#fffb00';
+    for(let i=bullets.length-1; i>=0; i--) {
+        let b = bullets[i]; b.x += b.vx; b.y += b.vy;
+        ctx.fillRect(b.x-player.x+cX-4, b.y-player.y+cY-4, 8, 8);
+        if(Math.abs(b.x-player.x)>800) bullets.splice(i,1);
+    }
+
+    // Кристаллы (опыт)
+    ctx.fillStyle = '#00ffcc';
+    for(let i=crystals.length-1; i>=0; i--) {
+        let c = crystals[i]; let d = Math.sqrt((c.x-player.x)**2 + (c.y-player.y)**2);
+        if(d < 80) { player.exp += 25; crystals.splice(i,1); updateUI(); checkLvl(); continue; }
+        ctx.fillRect(c.x-player.x+cX-5, c.y-player.y+cY-5, 10, 10);
+    }
+
+    // Враги
+    for(let i=enemies.length-1; i>=0; i--) {
+        let e = enemies[i], dx = player.x - e.x, dy = player.y - e.y, d = Math.sqrt(dx*dx+dy*dy);
+        e.x += (dx/d)*2.1; e.y += (dy/d)*2.1;
+        
+        // Проверка попаданий пули
+        bullets.forEach((b, bi) => {
+            if(Math.sqrt((b.x-e.x)**2 + (b.y-e.y)**2) < 25) {
+                e.hp -= player.dmg; bullets.splice(bi, 1);
+            }
+        });
+
+        if(e.hp <= 0) { 
+            player.gold += 10; crystals.push({x: e.x, y: e.y}); 
+            enemies.splice(i,1); updateUI(); continue; 
+        }
+        if(d < 28) { player.hp -= 0.4; updateUI(); }
+        if(d > 1200) { enemies.splice(i,1); continue; }
+
+        ctx.fillStyle = '#ff4d4d'; ctx.beginPath();
+        ctx.arc(e.x-player.x+cX, e.y-player.y+cY, 18, 0, Math.PI*2); ctx.fill();
+    }
+
+    if(player.hp <= 0) { alert("ВЫ ПОГИБЛИ! УРОВЕНЬ: " + player.lvl); location.reload(); }
+
+    // Игрок
+    ctx.fillStyle = '#00d4ff'; ctx.shadowBlur = 15; ctx.shadowColor = '#00d4ff';
+    ctx.fillRect(cX-15, cY-15, 30, 30); ctx.shadowBlur = 0;
+}
+</script>
+</body>
+</html>
