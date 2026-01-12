@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Survivalist</title>
+    <style>
+        :root { --p: #00d4ff; --r: #ff0055; --g: #ffcc00; --bg: #050805; --panel: rgba(0, 20, 0, 0.95); --ev: #ff3333; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; outline: none; margin: 0; padding: 0; }
+        body { background: var(--bg); color: #fff; font-family: sans-serif; overflow: hidden; width: 100vw; height: 100vh; }
+        canvas { display: block; position: absolute; top: 0; left: 0; }
+        
+        .ui { position: absolute; inset: 0; z-index: 100; background: var(--bg); display: flex; flex-direction: column; }
+        .hidden { display: none !important; }
+        
+        /* Авторизация */
+        #auth { justify-content: center; align-items: center; background: rgba(0,0,0,0.9); backdrop-filter: blur(10px); }
+        .auth-panel { background: var(--panel); padding: 30px; border: 2px solid var(--p); border-radius: 20px; text-align: center; width: 85%; max-width: 350px; box-shadow: 0 0 20px var(--p); }
+
+        /* Профиль */
+        .top-profile { position: absolute; top: 20px; left: 20px; display: flex; align-items: center; gap: 12px; cursor: pointer; z-index: 110; }
+        .lvl-box { width: 50px; height: 50px; border: 3px solid var(--p); border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; background: rgba(0,0,0,0.6); box-shadow: 0 0 10px var(--p); }
+
+        /* Меню */
+        .lobby-content { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding-bottom: 100px; }
+        .btn-play { width: 160px; height: 160px; border-radius: 50%; background: var(--p); color: #000; border: 8px solid rgba(255,255,255,0.2); font-size: 22px; font-weight: 900; cursor: pointer; margin-top: 100px; box-shadow: 0 0 25px var(--p); transition: 0.2s; }
+        .btn-play:active { transform: scale(0.9); }
+        
+        /* Табы */
+        .nav-bar { position: absolute; bottom: 0; left: 0; width: 100%; height: 75px; border-top: 2px solid #222; display: flex; background: #080a08; }
+        .nav-tab { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 11px; color: #555; cursor: pointer; }
+        .nav-tab.active { color: var(--p); background: rgba(0, 212, 255, 0.05); }
+
+        .tab-view { width: 100%; height: 100%; padding: 80px 20px 90px; overflow-y: auto; }
+        .rank-item { display: flex; justify-content: space-between; padding: 12px; background: rgba(255,255,255,0.03); margin-bottom: 6px; border-radius: 8px; border-bottom: 1px solid #222; }
+
+        /* HUD */
+        #hud { position: absolute; top: 0; left: 0; width: 100%; padding: 15px; pointer-events: none; z-index: 50; }
+        .bar { width: 100%; height: 8px; background: rgba(255,255,255,0.1); margin-top: 5px; border-radius: 4px; overflow: hidden; }
+        .fill { height: 100%; width: 0%; transition: width 0.2s; }
+
+        /* Карты */
+        #card-screen { background: rgba(0,0,0,0.85); backdrop-filter: blur(10px); justify-content: center; align-items: center; z-index: 200; }
+        .card-list { display: flex; flex-direction: column; gap: 12px; width: 90%; max-width: 380px; }
+        .card-item { background: var(--panel); border: 2px solid var(--p); padding: 15px; border-radius: 15px; display: flex; align-items: center; gap: 15px; cursor: pointer; }
+        .card-item.evo { border-color: var(--ev); box-shadow: 0 0 15px var(--ev); }
+        .card-icon { width: 50px; height: 50px; background: rgba(255,255,255,0.1); border-radius: 10px; display: flex; justify-content: center; align-items: center; font-size: 24px; }
+        .card-info h3 { font-size: 16px; text-transform: uppercase; color: var(--p); }
+        .card-info.evo h3 { color: var(--ev); }
+        .stars { color: var(--g); font-size: 12px; letter-spacing: 2px; }
+
+        #joy-base { position: absolute; width: 100px; height: 100px; background: rgba(255,255,255,0.05); border: 2px solid var(--p); border-radius: 50%; z-index: 60; transform: translate(-50%, -50%); pointer-events: none; }
+        #joy-stick { position: absolute; width: 40px; height: 40px; background: var(--p); border-radius: 50%; left: 30px; top: 30px; }
+        input { width: 100%; padding: 12px; background: #000; border: 1px solid var(--p); color: #fff; text-align: center; margin-bottom: 12px; border-radius: 8px; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+<div id="hud" class="hidden">
+    <div style="display:flex; justify-content:space-between; align-items: center;">
+        <div id="h-lvl" style="background:var(--p); color:#000; padding:5px 15px; border-radius:20px; font-weight:bold;">LVL 1</div>
+        <div id="h-time" style="font-family: monospace; font-size: 20px;">00:00</div>
+        <div id="h-gold" style="color:var(--g); font-weight:bold;">💰 0</div>
+    </div>
+    <div class="bar"><div id="hp-fill" class="fill" style="background:var(--r); width:100%"></div></div>
+    <div class="bar"><div id="exp-fill" class="fill" style="background:var(--p)"></div></div>
+</div>
+
+<div id="auth" class="ui">
+    <div class="auth-panel">
+        <h1 style="color:var(--p); margin-bottom: 20px;">SURVIVALIST</h1>
+        <input type="text" id="nick" placeholder="ЛОГИН">
+        <input type="password" id="pass" placeholder="ПАРОЛЬ">
+        <button onclick="account.login()" style="width:100%; padding:15px; background:var(--p); border:none; border-radius:8px; font-weight:bold; cursor:pointer; text-transform:uppercase;">Вход / Регистрация</button>
+    </div>
+</div>
+
+<div id="card-screen" class="ui hidden">
+    <h2 style="margin-bottom: 20px; color: #fff;">ВЫБЕРИТЕ КАРТУ</h2>
+    <div class="card-list" id="card-list"></div>
+</div>
+
+<div id="lobby" class="ui hidden">
+    <div class="top-profile" onclick="game.showLvlInfo()">
+        <div class="lvl-box" id="u-lvl">1</div>
+        <div style="font-weight:bold; text-transform:uppercase;" id="u-nick">ГЕРОЙ</div>
+    </div>
+    <div id="tab-main" class="tab-view">
+        <div class="lobby-content">
+            <div style="color:var(--g); font-size: 26px; font-weight: bold;">💰 <span id="u-gold">0</span></div>
+            <button class="btn-play" onclick="game.start()">ИГРАТЬ</button>
+        </div>
+    </div>
+    <div id="tab-rank" class="tab-view hidden">
+        <h2 style="text-align:center; color:var(--p); margin-bottom: 20px;">ТОП-100 ВЫЖИВШИХ</h2>
+        <div id="rankings"></div>
+    </div>
+    <div class="nav-bar">
+        <div class="nav-tab active" onclick="ui.setTab('main', this)"><span>ГЛАВНАЯ</span></div>
+        <div class="nav-tab" onclick="ui.setTab('rank', this)"><span>РЕЙТИНГ</span></div>
+    </div>
+</div>
+
+<div id="joy-base" class="hidden"><div id="joy-stick"></div></div>
+<canvas id="cvs"></canvas>
+<script>
+const SKILLS_DB = {
+    "выстрел": { icon: "🔫", desc: "Стреляет пулями в ближайшего врага" },
+    "молния": { icon: "⚡", desc: "Бьет случайного врага молнией" },
+    "кирпич": { icon: "🧱", desc: "Падает сверху на врагов" },
+    "силовое поле": { icon: "🔘", desc: "Аура урона вокруг игрока" },
+    "ракета": { icon: "🚀", desc: "Летит в случайном направлении" }
+};
+
+const game = {
+    active: false, paused: false, time: 0, enemies: [], bullets: [], sessionGold: 0, sessionExp: 0,
+    playerSkills: {},
+    
+    start() {
+        this.active = true; this.paused = false; this.time = 0; this.enemies = []; this.bullets = []; 
+        this.sessionGold = 0; this.sessionExp = 0;
+        this.playerSkills = { "выстрел": 1 }; 
+        
+        document.getElementById('lobby').classList.add('hidden');
+        document.getElementById('hud').classList.remove('hidden');
+        
+        this.w = cvs.width = window.innerWidth; 
+        this.h = cvs.height = window.innerHeight;
+        
+        // Внутриигровой прогресс (pLvl/pExp) для карточек
+        this.p = { 
+            ...account.curr, 
+            x: this.w/2, y: this.h/2, 
+            hp: 100, mHp: 100, r: 15, s: 3.5, 
+            last: 0, pLvl: 1, pExp: 0 
+        };
+        
+        joy.init(); 
+        this.loop();
+    },
+
+    showCardSelection() {
+        this.paused = true;
+        const screen = document.getElementById('card-screen');
+        const list = document.getElementById('card-list');
+        list.innerHTML = "";
+        screen.classList.remove('hidden');
+
+        // Выбор доступных для улучшения навыков
+        let options = Object.keys(SKILLS_DB).filter(name => (this.playerSkills[name] || 0) < 6);
+        let shuffle = options.sort(() => 0.5 - Math.random()).slice(0, 3);
+
+        shuffle.forEach(name => {
+            const currentLvl = this.playerSkills[name] || 0;
+            const nextLvl = currentLvl + 1;
+            const isEvo = nextLvl === 6;
+            
+            const card = document.createElement('div');
+            card.className = `card-item ${isEvo ? 'evo' : ''}`;
+            let starsHtml = isEvo ? `<span style="color:var(--ev)">★ ЭВОЛЮЦИЯ</span>` : "★".repeat(nextLvl);
+            
+            card.innerHTML = `
+                <div class="card-icon">${SKILLS_DB[name].icon}</div>
+                <div class="card-info ${isEvo ? 'evo' : ''}">
+                    <h3>${name}</h3>
+                    <div class="stars">${starsHtml}</div>
+                    <p style="font-size:11px; opacity:0.7">${SKILLS_DB[name].desc}</p>
+                </div>
+            `;
+            
+            card.onclick = () => {
+                this.playerSkills[name] = nextLvl;
+                screen.classList.add('hidden');
+                this.paused = false;
+            };
+            list.appendChild(card);
+        });
+    },
+
+    spawn() {
+        if(this.enemies.length > 35) return;
+        const s = Math.floor(Math.random()*4), isBoss = Math.random() < 0.05;
+        let x, y;
+        if(s===0){x=Math.random()*this.w; y=-20} 
+        else if(s===1){x=this.w+20; y=Math.random()*this.h}
+        else if(s===2){x=Math.random()*this.w; y=this.h+20} 
+        else {x=-20; y=Math.random()*this.h}
+        this.enemies.push({ x, y, hp: isBoss?25:2, r: isBoss?30:14, s: isBoss?0.7:1.6, boss: isBoss });
+    },
+
+    showLvlInfo() {
+        const next = this.p.lvl * 100;
+        alert(`Профиль ${account.curr.nick}:\nУровень: ${account.curr.lvl}\nОпыт: ${account.curr.exp} / ${next}`);
+    },
+
+    update() {
+        if(this.paused) return;
+        this.time++;
+        
+        // Движение игрока
+        this.p.x = Math.max(15, Math.min(this.w-15, this.p.x + joy.x * this.p.s));
+        this.p.y = Math.max(15, Math.min(this.h-15, this.p.y + joy.y * this.p.s));
+        
+        if(this.time % 60 === 0) this.spawn();
+
+        // 1. Логика: Выстрел
+        let shotCooldown = 35 - (this.playerSkills['выстрел'] || 1) * 5;
+        if(this.time - this.p.last > shotCooldown) {
+            let target = null, dMin = 400;
+            this.enemies.forEach(e => {
+                const d = Math.hypot(e.x-this.p.x, e.y-this.p.y);
+                if(d < dMin) { dMin = d; target = e; }
+            });
+            if(target) {
+                const isEvo = this.playerSkills['выстрел'] === 6;
+                this.bullets.push({
+                    x:this.p.x, y:this.p.y, 
+                    a:Math.atan2(target.y-this.p.y, target.x-this.p.x), 
+                    s: isEvo ? 15 : 10, evo: isEvo
+                });
+                this.p.last = this.time;
+            }
+        }
+
+        // 2. Логика: Силовое поле
+        if(this.playerSkills['силовое поле']) {
+            let radius = 45 + this.playerSkills['силовое поле'] * 12;
+            let dmg = this.playerSkills['силовое поле'] === 6 ? 0.4 : 0.06;
+            this.enemies.forEach(e => {
+                if(Math.hypot(e.x-this.p.x, e.y-this.p.y) < radius + e.r) e.hp -= dmg;
+            });
+        }
+
+        // 3. Логика: Молния
+        if(this.playerSkills['молния'] && this.time % 90 === 0) {
+            let targets = this.playerSkills['молния'] === 6 ? 10 : this.playerSkills['молния'];
+            for(let i=0; i < targets; i++) {
+                if(this.enemies[i]) this.enemies[i].hp -= 6;
+            }
+        }
+
+        // Пули
+        this.bullets.forEach((b, i) => {
+            b.x += Math.cos(b.a)*b.s; b.y += Math.sin(b.a)*b.s;
+            if(b.x<0 || b.x>this.w || b.y<0 || b.y>this.h) this.bullets.splice(i,1);
+        });
+
+        // Враги и коллизии
+        this.enemies.forEach((e, i) => {
+            const a = Math.atan2(this.p.y-e.y, this.p.x-e.x);
+            e.x += Math.cos(a)*e.s; e.y += Math.sin(a)*e.s;
+            
+            this.bullets.forEach((b, bi) => {
+                if(Math.hypot(e.x-b.x, e.y-b.y) < e.r) {
+                    e.hp -= (b.evo ? 4 : 1); 
+                    if(!b.evo) this.bullets.splice(bi,1);
+                    if(e.hp<=0) {
+                        this.sessionGold += e.boss ? 50 : 1;
+                        this.sessionExp += e.boss ? 100 : 20;
+                        this.p.pExp += e.boss ? 60 : 25; // Опыт для карт
+                        this.enemies.splice(i,1);
+                    }
+                }
+            });
+            if(Math.hypot(e.x-this.p.x, e.y-this.p.y) < e.r + this.p.r) {
+                this.p.hp -= 0.7; if(this.p.hp <= 0) this.over();
+            }
+        });
+
+        // Повышение уровня внутри игры
+        let nextLvlExp = this.p.pLvl * 150;
+        if(this.p.pExp >= nextLvlExp) {
+            this.p.pExp -= nextLvlExp;
+            this.p.pLvl++;
+            this.showCardSelection();
+        }
+    },
+
+    render() {
+        const ctx = cvs.getContext('2d');
+        ctx.fillStyle = '#050805'; ctx.fillRect(0,0,this.w,this.h);
+        
+        if(this.playerSkills['силовое поле']) {
+            ctx.beginPath();
+            ctx.arc(this.p.x, this.p.y, 45 + this.playerSkills['силовое поле'] * 12, 0, Math.PI*2);
+            ctx.strokeStyle = this.playerSkills['силовое поле'] === 6 ? '#ff3333' : '#00d4ff';
+            ctx.lineWidth = 2; ctx.globalAlpha = 0.2; ctx.stroke(); ctx.globalAlpha = 1.0;
+        }
+
+        this.bullets.forEach(b => {
+            ctx.fillStyle = b.evo ? '#ff3333' : '#fff';
+            ctx.fillRect(b.x-2, b.y-2, b.evo?8:5, b.evo?8:5);
+        });
+
+        this.enemies.forEach(e => { 
+            ctx.fillStyle = e.boss ? '#ffcc00' : '#ff0055';
+            ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, 7); ctx.fill(); 
+        });
+
+        ctx.fillStyle = '#00d4ff'; ctx.beginPath(); ctx.arc(this.p.x, this.p.y, this.p.r, 0, 7); ctx.fill();
+        
+        document.getElementById('h-lvl').innerText = `LVL ${this.p.pLvl}`;
+        document.getElementById('h-gold').innerText = `💰 ${this.sessionGold}`;
+        document.getElementById('hp-fill').style.width = (this.p.hp/this.p.mHp*100)+'%';
+        document.getElementById('exp-fill').style.width = (this.p.pExp / (this.p.pLvl * 150) * 100)+'%';
+        
+        const s = Math.floor(this.time/60);
+        document.getElementById('h-time').innerText = `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
+    },
+
+    loop() { if(this.active) { this.update(); this.render(); requestAnimationFrame(() => this.loop()); } },
+
+    over() {
+        this.active = false;
+        account.curr.gold += this.sessionGold;
+        account.curr.totalExp += this.sessionExp;
+        account.curr.exp += this.sessionExp;
+        
+        while(account.curr.exp >= account.curr.lvl * 100) { 
+            account.curr.exp -= account.curr.lvl * 100; 
+            account.curr.lvl++; 
+        }
+        
+        account.save();
+        alert(`SURVIVALIST: КОНЕЦ ИГРЫ!\nЗолото: +${this.sessionGold}\nОпыт: +${this.sessionExp}`);
+        account.openLobby();
+        document.getElementById('hud').classList.add('hidden');
+    }
+};
+
+// Исправленный блок аккаунта
+account.init = function() {
+    const last = localStorage.getItem('last_user');
+    if(last) {
+        const data = localStorage.getItem('user_' + last);
+        if(data) {
+            this.curr = JSON.parse(data);
+            this.openLobby();
+        }
+    }
+};
+
+account.login = function() {
+    const n = document.getElementById('nick').value.trim().toLowerCase();
+    const p = document.getElementById('pass').value.trim();
+    if(!n || !p) return alert("Введите логин и пароль!");
+    
+    const saved = localStorage.getItem('user_' + n);
+    if(saved) {
+        const data = JSON.parse(saved);
+        if(data.pass !== p) return alert("Неверный пароль!");
+        this.curr = data;
+    } else {
+        // Регистрация нового
+        this.curr = { nick: n, pass: p, gold: 0, lvl: 1, exp: 0, totalExp: 0 };
+    }
+    
+    localStorage.setItem('last_user', n);
+    this.save();
+    this.openLobby();
+};
+
+account.init();
+</script>
+</body>
+</html>
