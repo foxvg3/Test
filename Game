@@ -1,0 +1,2046 @@
+import pygame
+import sys
+import random
+import math
+
+# --- ИНИЦИАЛИЗАЦИЯ PYGAME ---
+pygame.init()
+pygame.font.init()
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
+pygame.display.set_caption("Пиксельная Песочница: Глубины Земли")
+clock = pygame.time.Clock()
+FPS = 60
+
+try:
+    font_large = pygame.font.SysFont("Arial", 16, bold=True)
+    font_small = pygame.font.SysFont("Arial", 10, bold=True)
+    font_hud = pygame.font.SysFont("Arial", 12, bold=True)
+    font_msg = pygame.font.SysFont("Arial", 14, bold=True)
+except:
+    font_large = pygame.font.Font(None, 20)
+    font_small = pygame.font.Font(None, 12)
+    font_hud = pygame.font.Font(None, 14)
+    font_msg = pygame.font.Font(None, 16)
+
+# --- КОНСТАНТЫ ---
+TILE_SIZE = 40
+CHUNK_SIZE = 16
+WORLD_HEIGHT = 500          # увеличено
+CLIMB_SPEED = 6.5
+CLIMB_SPRINT = 10.0
+SPRINT_MULT = 1.7
+AIR = 0
+DIRT = 1
+GRASS = 2
+STONE = 3
+WOOD = 4
+LEAVES = 5
+COAL = 6
+IRON_ORE = 7
+DIAMOND_ORE = 8
+AMETHYST_ORE = 9
+EMERALD_ORE = 10
+RUBY_ORE = 11
+COPPER_ORE = 12
+SILVER_ORE = 13
+TOPAZ_ORE = 14
+SAPPHIRE_ORE = 15
+OBSIDIAN_ORE = 16
+LADDER = 17
+TORCH = 18
+DARK_STONE = 19
+RED_STONE = 20
+CRYSTALLITE_ORE = 21
+TENEBRITE_ORE = 22
+GOLD_ORE = 23
+PLATINUM_ORE = 24
+MAGMATITE_ORE = 25
+ENCHANTED_QUARTZ = 26
+GRAVITY = 0.5
+WALK_SPEED = 3.6
+JUMP_FORCE = -10.5
+FRICTION = 0.25
+
+PRICES = {
+    "Земля": 1, "Дерево": 4, "Камень": 2, "Доска": 1, "Палка": 1,
+    "Уголь": 3, "Железо": 5, "Жел. Слиток": 12, "Медь": 6, "Серебро": 10,
+    "Топаз": 18, "Сапфир": 28, "Аметист": 25, "Алмаз": 50, "Изумруд": 80,
+    "Рубин": 120, "Обсидиан": 150, "Кристаллит": 180, "Тенерит": 200,
+    "Золото": 35, "Золот. Слиток": 90, "Платина": 160, "Магматит": 220, "Зач.Кварц": 280,
+    "Лестница": 1, "Тём.Камень": 4, "Крас.Камень": 12,
+    "Дер. Кирка": 5, "Мед. Кирка": 8, "Кам. Кирка": 15,
+    "Сер. Кирка": 22, "Жел. Кирка": 30, "Топ. Кирка": 45,
+    "Амет. Кирка": 60, "Сапф. Кирка": 80, "Изум. Кирка": 100,
+    "Крис. Кирка": 130, "Алм. Кирка": 150, "Тен. Кирка": 200,
+    "Руб. Кирка": 180, "Обс. Кирка": 220, "Зол. Кирка": 110,
+    "Плат. Кирка": 250, "Магм. Кирка": 300, "КвЗач. Кирка": 380,
+    "Факел": 2, "Зелье": 15,
+    "Сапоги": 200, "Каска Шахт.": 250, "Пояс": 220
+}
+
+PICKAXE_DATA = {
+    "Дер. Кирка":  {"tier": 1, "area": (1, 1), "multi_hit": {STONE: 3, DARK_STONE: 6}, "damage": 1},
+    "Мед. Кирка":  {"tier": 2, "area": (1, 1), "multi_hit": {STONE: 2, DARK_STONE: 4}, "damage": 2},
+    "Кам. Кирка":  {"tier": 3, "area": (1, 1), "multi_hit": {IRON_ORE: 3, DARK_STONE: 3}, "damage": 3},
+    "Сер. Кирка":  {"tier": 4, "area": (1, 1), "multi_hit": {TOPAZ_ORE: 3}, "damage": 4},
+    "Жел. Кирка":  {"tier": 5, "area": (1, 1), "multi_hit": {AMETHYST_ORE: 3, RED_STONE: 6}, "damage": 5},
+    "Топ. Кирка":  {"tier": 6, "area": (1, 1), "multi_hit": {SAPPHIRE_ORE: 4, RED_STONE: 4}, "damage": 7},
+    "Амет. Кирка": {"tier": 7, "area": (2, 1), "multi_hit": {DIAMOND_ORE: 3, RED_STONE: 2}, "damage": 9},
+    "Сапф. Кирка": {"tier": 8, "area": (2, 2), "multi_hit": {OBSIDIAN_ORE: 4, CRYSTALLITE_ORE: 3}, "damage": 12},
+    "Крис. Кирка": {"tier": 12, "area": (2, 2), "multi_hit": {TENEBRITE_ORE: 4}, "damage": 16},
+    "Изум. Кирка": {"tier": 11, "area": (2, 3), "multi_hit": {}, "damage": 18},
+    "Алм. Кирка":  {"tier": 10, "area": (2, 2), "multi_hit": {}, "damage": 22},
+    "Тен. Кирка":  {"tier": 14, "area": (4, 4), "multi_hit": {}, "damage": 28},
+    "Руб. Кирка":  {"tier": 9, "area": (3, 3), "multi_hit": {}, "damage": 32},
+    "Обс. Кирка":  {"tier": 13, "area": (4, 3), "multi_hit": {}, "damage": 36},
+    "Зол. Кирка":  {"tier": 8, "area": (2, 2), "multi_hit": {GOLD_ORE: 2}, "damage": 20},
+    "Плат. Кирка": {"tier": 15, "area": (3, 3), "multi_hit": {}, "damage": 42},
+    "Магм. Кирка": {"tier": 16, "area": (4, 4), "multi_hit": {}, "damage": 55},
+    "КвЗач. Кирка":{"tier": 17, "area": (5, 5), "multi_hit": {}, "damage": 70},
+}
+
+ORE_TIERS = {
+    DIRT: 0, GRASS: 0, STONE: 0, WOOD: 0, LEAVES: 0, LADDER: 0, TORCH: 0,
+    COAL: 1, COPPER_ORE: 1, IRON_ORE: 2, SILVER_ORE: 3, DARK_STONE: 2,
+    TOPAZ_ORE: 4, AMETHYST_ORE: 5, SAPPHIRE_ORE: 6, DIAMOND_ORE: 7,
+    RED_STONE: 5, EMERALD_ORE: 8, OBSIDIAN_ORE: 9, CRYSTALLITE_ORE: 8,
+    TENEBRITE_ORE: 10, RUBY_ORE: 11,
+    GOLD_ORE: 6, PLATINUM_ORE: 12, MAGMATITE_ORE: 13, ENCHANTED_QUARTZ: 14,
+}
+
+# --- ТЕКСТУРЫ ---
+def generate_textures():
+    textures = {}
+    textures[AIR] = None
+
+    def ore_on_stone(color_dark, color_light, count=6,
+                     base=(110, 110, 110), dark=(80, 80, 80), light=(140, 140, 140)):
+        s = pygame.Surface((TILE_SIZE, TILE_SIZE))
+        s.fill(base)
+        for _ in range(12):
+            pygame.draw.rect(s, dark, (random.randint(0, 30), random.randint(0, 30), 8, 8))
+            pygame.draw.rect(s, light, (random.randint(0, 30), random.randint(0, 30), 6, 6))
+        for _ in range(count):
+            pygame.draw.rect(s, color_dark, (random.randint(4, 28), random.randint(4, 28), 7, 6))
+            pygame.draw.rect(s, color_light, (random.randint(4, 28), random.randint(4, 28), 4, 4))
+        pygame.draw.rect(s, (70, 70, 70), (0, 0, TILE_SIZE, TILE_SIZE), 1)
+        return s
+
+    dirt = pygame.Surface((TILE_SIZE, TILE_SIZE))
+    dirt.fill((120, 72, 44))
+    for _ in range(16):
+        pygame.draw.rect(dirt, (90, 50, 30), (random.randint(0, 32), random.randint(0, 32), 6, 6))
+        pygame.draw.rect(dirt, (145, 95, 65), (random.randint(0, 32), random.randint(0, 32), 4, 4))
+    pygame.draw.rect(dirt, (70, 40, 20), (0, 0, TILE_SIZE, TILE_SIZE), 1)
+    textures[DIRT] = dirt
+
+    grass = dirt.copy()
+    pygame.draw.rect(grass, (58, 150, 45), (0, 0, TILE_SIZE, 12))
+    for x in range(0, TILE_SIZE, 6):
+        pygame.draw.rect(grass, (58, 150, 45), (x, 11, 4, random.choice([4, 6, 8])))
+    textures[GRASS] = grass
+
+    textures[STONE] = ore_on_stone((80, 80, 80), (140, 140, 140), 0)
+    textures[DARK_STONE] = ore_on_stone(
+        (50, 50, 55), (90, 90, 100), 0,
+        base=(70, 70, 75), dark=(45, 45, 50), light=(95, 95, 105)
+    )
+    textures[RED_STONE] = ore_on_stone(
+        (130, 40, 40), (200, 100, 100), 0,
+        base=(140, 60, 60), dark=(100, 30, 30), light=(180, 90, 90)
+    )
+
+    wood = pygame.Surface((TILE_SIZE, TILE_SIZE))
+    wood.fill((97, 61, 38))
+    pygame.draw.rect(wood, (61, 35, 18), (4, 0, 6, TILE_SIZE))
+    pygame.draw.rect(wood, (61, 35, 18), (18, 0, 8, TILE_SIZE))
+    pygame.draw.rect(wood, (61, 35, 18), (30, 0, 4, TILE_SIZE))
+    pygame.draw.rect(wood, (50, 30, 15), (0, 0, TILE_SIZE, TILE_SIZE), 1)
+    textures[WOOD] = wood
+
+    leaves = pygame.Surface((TILE_SIZE, TILE_SIZE))
+    leaves.fill((30, 120, 35))
+    for _ in range(12):
+        pygame.draw.rect(leaves, (20, 95, 25), (random.randint(0, 32), random.randint(0, 32), 8, 8))
+        pygame.draw.rect(leaves, (70, 170, 50), (random.randint(0, 32), random.randint(0, 32), 4, 4))
+    pygame.draw.rect(leaves, (15, 60, 15), (0, 0, TILE_SIZE, TILE_SIZE), 1)
+    textures[LEAVES] = leaves
+
+    textures[COAL] = ore_on_stone((20, 20, 20), (50, 50, 50))
+    textures[IRON_ORE] = ore_on_stone((180, 80, 20), (210, 130, 60))
+    textures[DIAMOND_ORE] = ore_on_stone((0, 160, 220), (180, 240, 255))
+    textures[AMETHYST_ORE] = ore_on_stone((120, 0, 180), (210, 160, 255))
+    textures[EMERALD_ORE] = ore_on_stone((30, 180, 90), (180, 240, 200))
+    textures[RUBY_ORE] = ore_on_stone((200, 50, 40), (250, 200, 190))
+    textures[COPPER_ORE] = ore_on_stone((180, 120, 50), (240, 170, 100))
+    textures[SILVER_ORE] = ore_on_stone((160, 170, 180), (220, 230, 240))
+    textures[TOPAZ_ORE] = ore_on_stone((200, 160, 40), (255, 220, 100))
+    textures[SAPPHIRE_ORE] = ore_on_stone((20, 50, 160), (100, 160, 255))
+    textures[OBSIDIAN_ORE] = ore_on_stone((15, 10, 25), (60, 50, 80))
+    textures[CRYSTALLITE_ORE] = ore_on_stone((0, 200, 180), (100, 255, 240), count=7)
+    textures[TENEBRITE_ORE] = ore_on_stone((60, 0, 100), (160, 60, 220), count=5)
+
+    # Новые руды
+    textures[GOLD_ORE] = ore_on_stone((220, 180, 0), (255, 240, 80), count=7)
+    textures[PLATINUM_ORE] = ore_on_stone((200, 210, 230), (240, 248, 255), count=6,
+                                          base=(130, 140, 155), dark=(90, 100, 115), light=(170, 180, 200))
+    textures[MAGMATITE_ORE] = ore_on_stone((255, 80, 0), (255, 200, 50), count=8,
+                                            base=(160, 40, 20), dark=(120, 20, 10), light=(200, 80, 40))
+    textures[ENCHANTED_QUARTZ] = ore_on_stone((180, 255, 180), (255, 255, 220), count=9,
+                                               base=(200, 230, 200), dark=(150, 180, 150), light=(230, 255, 230))
+
+    ladder = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+    pygame.draw.rect(ladder, (160, 110, 70), (6, 0, 6, TILE_SIZE))
+    pygame.draw.rect(ladder, (160, 110, 70), (TILE_SIZE - 12, 0, 6, TILE_SIZE))
+    for y in range(4, TILE_SIZE, 8):
+        pygame.draw.rect(ladder, (130, 85, 50), (12, y, TILE_SIZE - 24, 4))
+    textures[LADDER] = ladder
+
+    torch_surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+    pygame.draw.rect(torch_surf, (100, 70, 40), (14, 8, 12, 28))
+    for _ in range(3):
+        fx = random.randint(12, 26)
+        fy = random.randint(0, 10)
+        fl = random.randint(6, 12)
+        pygame.draw.ellipse(torch_surf, (255, 200 + random.randint(0, 55), 0, 180), (fx - 3, fy - fl, 6, fl))
+    pygame.draw.circle(torch_surf, (255, 255, 100, 120), (20, 4), 8)
+    textures[TORCH] = torch_surf
+
+    return textures
+
+TEXTURES = generate_textures()
+
+# --- КЭШ МАСШТАБИРОВАННЫХ ТЕКСТУР ---
+_SCALED_TEXTURE_CACHE = {}
+
+def get_scaled_texture(block_type, size):
+    key = (block_type, size)
+    if key not in _SCALED_TEXTURE_CACHE:
+        tex = TEXTURES.get(block_type)
+        if tex:
+            _SCALED_TEXTURE_CACHE[key] = pygame.transform.scale(tex, (size, size)).convert_alpha()
+        else:
+            _SCALED_TEXTURE_CACHE[key] = None
+    return _SCALED_TEXTURE_CACHE[key]
+
+# --- ПРЕДВАРИТЕЛЬНО СОЗДАННЫЕ ПОВЕРХНОСТИ ДЛЯ ТЬМЫ ---
+_DARK_OVERLAY_CACHE = {}
+
+def _get_dark_overlay(dark_alpha, w, h):
+    key = (dark_alpha, w, h)
+    if key not in _DARK_OVERLAY_CACHE:
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, dark_alpha))
+        _DARK_OVERLAY_CACHE[key] = surf
+    return _DARK_OVERLAY_CACHE[key]
+
+# --- ОРЕОЛ ФАКЕЛА ---
+_TORCH_GLOW_RADIUS = 3 * TILE_SIZE
+_TORCH_GLOW_SURFACE = None
+
+def get_torch_glow():
+    global _TORCH_GLOW_SURFACE
+    if _TORCH_GLOW_SURFACE is None:
+        size = _TORCH_GLOW_RADIUS * 2 + TILE_SIZE
+        _TORCH_GLOW_SURFACE = pygame.Surface((size, size), pygame.SRCALPHA)
+        center = size // 2
+        for i in range(40, 0, -1):
+            alpha = max(0, 140 - i * 3)
+            pygame.draw.circle(_TORCH_GLOW_SURFACE, (255, 210, 100, alpha), (center, center), i * 3)
+    return _TORCH_GLOW_SURFACE
+
+# --- КЭШ ТЕКСТУР С ТРЕЩИНАМИ ---
+_CRACKED_TEXTURES = {}
+
+def get_cracked_texture(block_type):
+    if block_type in _CRACKED_TEXTURES:
+        return _CRACKED_TEXTURES[block_type]
+    base = TEXTURES.get(block_type)
+    if not base:
+        return None
+    surf = base.copy()
+    draw_cracks(surf)
+    _CRACKED_TEXTURES[block_type] = surf
+    return surf
+
+def draw_cracks(surface):
+    pygame.draw.line(surface, (40, 40, 40), (4, 4), (36, 36), 2)
+    pygame.draw.line(surface, (40, 40, 40), (36, 4), (4, 36), 2)
+    pygame.draw.line(surface, (40, 40, 40), (20, 4), (20, 36), 1)
+    pygame.draw.line(surface, (40, 40, 40), (4, 20), (36, 20), 1)
+
+# --- ПАРТИКЛЫ ---
+_PARTICLE_SURFACES = {}
+
+def _get_particle_surface(size, color):
+    key = (size, color[0] // 10, color[1] // 10, color[2] // 10)
+    if key not in _PARTICLE_SURFACES:
+        s = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+        pygame.draw.circle(s, color, (size, size), size)
+        _PARTICLE_SURFACES[key] = s
+    return _PARTICLE_SURFACES[key]
+
+class Particle:
+    def __init__(self, x, y, color):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.vx = random.uniform(-3, 3)
+        self.vy = random.uniform(-5, -1)
+        self.life = random.randint(15, 35)
+        self.max_life = self.life
+        self.size = random.randint(2, 5)
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        self.vy += 0.15
+        self.life -= 1
+        return self.life > 0
+
+    def draw(self, screen, cam_x, cam_y):
+        alpha = int(255 * (self.life / self.max_life))
+        sx = self.x - cam_x
+        sy = self.y - cam_y
+        if sx < -10 or sx > SCREEN_WIDTH + 10 or sy < -10 or sy > SCREEN_HEIGHT + 10:
+            return
+        s = _get_particle_surface(self.size, self.color)
+        s.set_alpha(alpha)
+        screen.blit(s, (sx - self.size, sy - self.size))
+
+# --- СООБЩЕНИЯ ---
+class DiscoveryMessage:
+    def __init__(self, text, color=(255, 220, 100)):
+        self.text = text
+        self.color = color
+        self.timer = 120
+        self.y_offset = 0
+
+    def update(self):
+        self.timer -= 1
+        self.y_offset = max(0, (120 - self.timer) * 0.3) if self.timer < 30 else 0
+        return self.timer > 0
+
+# --- ВЫПАВШИЙ ПРЕДМЕТ ---
+class DroppedItem:
+    def __init__(self, x, y, name, block_type):
+        self.x = x
+        self.y = y
+        self.name = name
+        self.block_type = block_type
+        self.vx = random.uniform(-1.5, 1.5)
+        self.vy = random.uniform(-3, -1)
+        self.rect = pygame.Rect(x, y, 14, 14)
+        self.is_grounded = False
+
+    def update(self, player_pos, has_magnet, world):
+        if not self.is_grounded:
+            self.vy += 0.25
+            if self.vy > 8:
+                self.vy = 8
+        else:
+            self.vy = 0
+        self.x += self.vx
+        self.y += self.vy
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
+        if self.is_grounded:
+            self.vx *= 0.8
+        else:
+            self.vx *= 0.98
+        self._resolve_collisions(world)
+        if has_magnet:
+            dx = player_pos[0] - self.x
+            dy = player_pos[1] - self.y
+            dist = math.hypot(dx, dy)
+            if dist < TILE_SIZE * 5:
+                self.is_grounded = False
+                speed = 5.0
+                self.vx += (dx / dist) * speed * 0.15
+                self.vy += (dy / dist) * speed * 0.15
+                self.vx = max(-7, min(7, self.vx))
+                self.vy = max(-7, min(7, self.vy))
+
+    def _resolve_collisions(self, world):
+        self.is_grounded = False
+        px_grid = int(self.rect.centerx // TILE_SIZE)
+        py_grid = int(self.rect.centery // TILE_SIZE)
+        for r in range(max(0, py_grid - 1), min(WORLD_HEIGHT, py_grid + 2)):
+            for c in range(px_grid - 1, px_grid + 2):
+                block = world.get_block(r, c)
+                if block not in (AIR, LEAVES, LADDER, TORCH):
+                    br = pygame.Rect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                    if self.rect.colliderect(br):
+                        ox = min(self.rect.right, br.right) - max(self.rect.left, br.left)
+                        oy = min(self.rect.bottom, br.bottom) - max(self.rect.top, br.top)
+                        if ox < oy:
+                            self.x += -ox if self.rect.centerx < br.centerx else ox
+                            self.vx = 0
+                        else:
+                            if self.rect.centery < br.centery:
+                                self.y -= oy
+                                self.vy = 0
+                                self.is_grounded = True
+                            else:
+                                self.y += oy
+                                self.vy = 0
+        # немедленно синхронизируем rect
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
+
+# --- ОТРИСОВКА ИГРОКА (простой и быстрый подход) ---
+# Создаём 4 базовых спрайта один раз при запуске, потом только blitируем
+_PLAYER_BASE_SPRITES = {}   # (facing_right, walk_phase 0/1) -> Surface
+
+def _build_player_base(facing_right, walk_phase):
+    """Строит простой пиксель-арт спрайт игрока. Вызывается 4 раза при старте."""
+    W, H = 28, 44
+    surf = pygame.Surface((W, H), pygame.SRCALPHA)
+    bob = 1 if walk_phase else 0
+
+    # Ноги
+    lleg_y = 33 + (bob if walk_phase else 0)
+    rleg_y = 33 + (0 if walk_phase else bob)
+    pygame.draw.rect(surf, (50, 50, 75), (5, lleg_y, 8, 8))
+    pygame.draw.rect(surf, (30, 20, 20), (5, lleg_y + 6, 8, 4))
+    pygame.draw.rect(surf, (50, 50, 75), (15, rleg_y, 8, 8))
+    pygame.draw.rect(surf, (30, 20, 20), (15, rleg_y + 6, 8, 4))
+
+    # Тело
+    pygame.draw.rect(surf, (40, 90, 180), (4, 18 - bob, 20, 15))
+    pygame.draw.rect(surf, (25, 60, 130), (4, 18 - bob, 20, 5))   # воротник
+    pygame.draw.rect(surf, (55, 35, 15), (4, 32, 20, 3))           # пояс
+
+    # Рюкзак
+    bp_x = 0 if facing_right else 23
+    pygame.draw.rect(surf, (90, 55, 25), (bp_x, 18, 5, 14))
+    pygame.draw.rect(surf, (70, 40, 15), (bp_x, 22, 5, 6))
+
+    # Рука
+    hand_x = 22 if facing_right else 0
+    pygame.draw.rect(surf, (40, 90, 180), (hand_x, 20, 6, 5))
+    pygame.draw.rect(surf, (240, 185, 130), (hand_x, 24, 6, 6))
+
+    # Голова
+    pygame.draw.rect(surf, (240, 185, 130), (6, 4 - bob, 16, 14))
+    pygame.draw.rect(surf, (75, 45, 20), (5, 2 - bob, 18, 6))   # шляпа/волосы
+    # Глаза
+    eye_x = 17 if facing_right else 7
+    pygame.draw.rect(surf, (255, 255, 255), (eye_x, 7 - bob, 4, 4))
+    pygame.draw.rect(surf, (0, 0, 0), (eye_x + (1 if facing_right else 1), 8 - bob, 2, 2))
+    # Нос
+    pygame.draw.rect(surf, (210, 150, 100), (12, 11 - bob, 4, 3))
+
+    surf = surf.convert_alpha()
+    return surf
+
+def init_player_sprites():
+    for fr in (True, False):
+        for wp in (0, 1):
+            _PLAYER_BASE_SPRITES[(fr, wp)] = _build_player_base(fr, wp)
+
+# --- ИГРОК ---
+class Player:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, 28, 42)
+        self.vx = 0
+        self.vy = 0
+        self.target_vx = 0
+        self.is_grounded = False
+        self.is_climbing = False
+        self.facing_right = True
+        self.coins = 0
+        self.has_crafting_table = False
+        self.has_furnace = False
+        self.has_amulet = False
+        self.has_magnet = False
+        self.has_speed_boots = False   # +скорость
+        self.has_miner_helmet = False  # +свет при добыче
+        self.has_tough_belt = False    # +доп хиты блоков
+        self.jump_count = 0
+        self.discovered_items = set()
+        self.walk_frame = 0
+        self.is_walking = False
+        self.dig_anim_time = 0.0
+        self.max_slots = 4
+        self.inventory = [
+            {"item": None, "count": 0},
+            {"item": "Лестница", "count": 10},
+            {"item": None, "count": 0},
+            {"item": None, "count": 0}
+        ]
+        self.hotbar = [
+            {"item": "Дер. Кирка", "count": 1},
+            {"item": "Лестница", "count": 10},
+            {"item": None, "count": 0}
+        ]
+        self.active_hotbar_index = 0
+
+    def add_item(self, item_name):
+        is_tool = "Кирка" in item_name
+        if not is_tool:
+            for slot in self.hotbar:
+                if slot["item"] == item_name:
+                    slot["count"] += 1
+                    return True
+            for slot in self.inventory:
+                if slot["item"] == item_name:
+                    slot["count"] += 1
+                    return True
+        for slot in self.hotbar:
+            if slot["item"] is None:
+                slot["item"] = item_name
+                slot["count"] = 1
+                return True
+        for slot in self.inventory:
+            if slot["item"] is None:
+                slot["item"] = item_name
+                slot["count"] = 1
+                return True
+        return False
+
+    def get_current_tool(self):
+        return self.hotbar[self.active_hotbar_index]["item"]
+
+    def get_pickaxe_count(self):
+        count = 0
+        for slot in self.inventory + self.hotbar:
+            if slot["item"] and "Кирка" in slot["item"]:
+                count += slot["count"]
+        return count
+
+    def get_current_sprite(self, _animations_unused=None):
+        """Быстро: возвращает один из 4 заранее готовых базовых спрайтов."""
+        walk_phase = (int(self.walk_frame) // 4) % 2 if self.is_walking else 0
+        return _PLAYER_BASE_SPRITES.get((self.facing_right, walk_phase),
+                                        _PLAYER_BASE_SPRITES[(True, 0)])
+
+    _final_sprite_cache = {}  # оставляем для совместимости, не используется
+
+    def update(self, world, jump_held=False, down_held=False, sprint_held=False):
+        on_ladder = self.check_ladder(world)
+        if on_ladder:
+            self.is_climbing = True
+            if jump_held:
+                self.vy = JUMP_FORCE
+                self.is_climbing = False
+                self.is_grounded = False
+            else:
+                climb_speed = CLIMB_SPRINT if sprint_held else CLIMB_SPEED
+                if down_held:
+                    self.vy = climb_speed
+                elif not jump_held:
+                    self.vy = 0
+                else:
+                    self.vy = -climb_speed
+        else:
+            self.is_climbing = False
+            self.vy += GRAVITY
+            if self.vy > 15:
+                self.vy = 15
+
+        speed_mult = 1.3 if self.has_speed_boots else 1.0
+        speed = WALK_SPEED * SPRINT_MULT * speed_mult if sprint_held else WALK_SPEED * speed_mult
+        if self.target_vx != 0:
+            target = speed if self.target_vx > 0 else -speed
+            self.vx += (target - self.vx) * 0.25
+        else:
+            self.vx += (0 - self.vx) * FRICTION
+        if abs(self.vx) < 0.1:
+            self.vx = 0
+        self.is_walking = abs(self.vx) > 0.5 and (self.is_grounded or self.is_climbing)
+        if self.is_walking:
+            self.walk_frame += 1
+        else:
+            self.walk_frame = 0
+
+        self.rect.x += self.vx
+        self._resolve_collisions(world, 'x')
+        self.rect.y += self.vy
+        self.is_grounded = False
+        self._resolve_collisions(world, 'y')
+        if self.is_grounded:
+            self.jump_count = 0
+        if self.vx > 0.2:
+            self.facing_right = True
+        elif self.vx < -0.2:
+            self.facing_right = False
+
+    def check_ladder(self, world):
+        px_g = self.rect.centerx // TILE_SIZE
+        py_g = self.rect.centery // TILE_SIZE
+        for r in range(max(0, py_g - 1), min(WORLD_HEIGHT, py_g + 2)):
+            for c in range(px_g - 1, px_g + 2):
+                if world.get_block(r, c) == LADDER:
+                    if self.rect.colliderect(pygame.Rect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE)):
+                        return True
+        return False
+
+    def _resolve_collisions(self, world, direction):
+        px_g = self.rect.centerx // TILE_SIZE
+        py_g = self.rect.centery // TILE_SIZE
+        for r in range(max(0, py_g - 2), min(WORLD_HEIGHT, py_g + 3)):
+            for c in range(px_g - 2, px_g + 3):
+                block = world.get_block(r, c)
+                if block not in (AIR, LEAVES, LADDER, TORCH):
+                    br = pygame.Rect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE)
+                    if self.rect.colliderect(br):
+                        if direction == 'x':
+                            if self.vx > 0:
+                                self.rect.right = br.left
+                            elif self.vx < 0:
+                                self.rect.left = br.right
+                            self.vx = 0
+                        else:
+                            if self.vy > 0:
+                                self.rect.bottom = br.top
+                                self.vy = 0
+                                self.is_grounded = True
+                            elif self.vy < 0:
+                                self.rect.top = br.bottom
+                                self.vy = 0
+
+    def jump(self):
+        if self.is_climbing:
+            self.vy = JUMP_FORCE
+            self.is_climbing = False
+            self.is_grounded = False
+            return
+        max_jumps = 2 if self.has_amulet else 1
+        if self.is_grounded:
+            self.vy = JUMP_FORCE
+            self.is_grounded = False
+            self.jump_count = 1
+        elif self.jump_count < max_jumps:
+            self.vy = JUMP_FORCE * 0.95
+            self.jump_count += 1
+
+# --- БЕСКОНЕЧНЫЙ МИР ---
+class EndlessWorld:
+    def __init__(self):
+        self.chunks = {}
+        self.chunk_surfaces = {}   # кэш отрисованных чанков
+        self.torch_positions = set()
+        for cx in range(-3, 4):
+            self.generate_chunk(cx)
+
+    def generate_chunk(self, cx):
+        if cx in self.chunks:
+            return
+        # сохраняем состояние random для воспроизводимости
+        old_random = random.getstate()
+        random.seed(cx * 104729)
+        chunk_data = [[AIR for _ in range(CHUNK_SIZE)] for _ in range(WORLD_HEIGHT)]
+        heights = []
+        h = 30
+        for x in range(CHUNK_SIZE):
+            if random.random() < 0.25:
+                h += random.choice([-1, 1])
+            h = max(15, min(h, 50))
+            heights.append(h)
+        for x in range(CHUNK_SIZE):
+            curr_h = heights[x]
+            for y in range(WORLD_HEIGHT):
+                if y == curr_h:
+                    chunk_data[y][x] = GRASS
+                elif curr_h < y < curr_h + 6:
+                    chunk_data[y][x] = DIRT
+                elif y >= curr_h + 6:
+                    rv = random.random()
+                    if y >= 250:
+                        if rv < 0.005:
+                            chunk_data[y][x] = ENCHANTED_QUARTZ
+                        elif rv < 0.012:
+                            chunk_data[y][x] = MAGMATITE_ORE
+                        elif rv < 0.018:
+                            chunk_data[y][x] = PLATINUM_ORE
+                        elif rv < 0.025:
+                            chunk_data[y][x] = TENEBRITE_ORE
+                        elif rv < 0.035:
+                            chunk_data[y][x] = RUBY_ORE
+                        elif rv < 0.050:
+                            chunk_data[y][x] = OBSIDIAN_ORE
+                        elif rv < 0.065:
+                            chunk_data[y][x] = EMERALD_ORE
+                        elif rv < 0.080:
+                            chunk_data[y][x] = DIAMOND_ORE
+                        elif rv < 0.50:
+                            chunk_data[y][x] = RED_STONE
+                        else:
+                            chunk_data[y][x] = STONE
+                    elif y >= 200:
+                        if rv < 0.008:
+                            chunk_data[y][x] = PLATINUM_ORE
+                        elif rv < 0.018:
+                            chunk_data[y][x] = MAGMATITE_ORE
+                        elif rv < 0.030:
+                            chunk_data[y][x] = TENEBRITE_ORE
+                        elif rv < 0.045:
+                            chunk_data[y][x] = RUBY_ORE
+                        elif rv < 0.060:
+                            chunk_data[y][x] = OBSIDIAN_ORE
+                        elif rv < 0.075:
+                            chunk_data[y][x] = CRYSTALLITE_ORE
+                        elif rv < 0.095:
+                            chunk_data[y][x] = EMERALD_ORE
+                        elif rv < 0.12:
+                            chunk_data[y][x] = DIAMOND_ORE
+                        elif rv < 0.18:
+                            chunk_data[y][x] = SAPPHIRE_ORE
+                        elif rv < 0.45:
+                            chunk_data[y][x] = DARK_STONE
+                        else:
+                            chunk_data[y][x] = STONE
+                    elif y >= 140:
+                        if rv < 0.015:
+                            chunk_data[y][x] = CRYSTALLITE_ORE
+                        elif rv < 0.03:
+                            chunk_data[y][x] = OBSIDIAN_ORE
+                        elif rv < 0.05:
+                            chunk_data[y][x] = EMERALD_ORE
+                        elif rv < 0.07:
+                            chunk_data[y][x] = DIAMOND_ORE
+                        elif rv < 0.10:
+                            chunk_data[y][x] = SAPPHIRE_ORE
+                        elif rv < 0.14:
+                            chunk_data[y][x] = TOPAZ_ORE
+                        elif rv < 0.40:
+                            chunk_data[y][x] = DARK_STONE
+                        else:
+                            chunk_data[y][x] = STONE
+                    elif y >= 100:
+                        if rv < 0.025:
+                            chunk_data[y][x] = GOLD_ORE
+                        elif rv < 0.05:
+                            chunk_data[y][x] = TOPAZ_ORE
+                        elif rv < 0.07:
+                            chunk_data[y][x] = AMETHYST_ORE
+                        elif rv < 0.10:
+                            chunk_data[y][x] = SILVER_ORE
+                        elif rv < 0.12:
+                            chunk_data[y][x] = IRON_ORE
+                        elif rv < 0.14:
+                            chunk_data[y][x] = COAL
+                        elif rv < 0.50:
+                            chunk_data[y][x] = DARK_STONE
+                        else:
+                            chunk_data[y][x] = STONE
+                    elif y >= 75:
+                        if rv < 0.03:
+                            chunk_data[y][x] = SILVER_ORE
+                        elif rv < 0.06:
+                            chunk_data[y][x] = IRON_ORE
+                        elif rv < 0.09:
+                            chunk_data[y][x] = COAL
+                        else:
+                            chunk_data[y][x] = STONE
+                    elif y >= 55:
+                        if rv < 0.04:
+                            chunk_data[y][x] = COPPER_ORE
+                        elif rv < 0.07:
+                            chunk_data[y][x] = COAL
+                        else:
+                            chunk_data[y][x] = STONE
+                    else:
+                        chunk_data[y][x] = STONE
+
+        # Деревья
+        for x in range(2, CHUNK_SIZE - 2):
+            y_grass = heights[x]
+            if random.random() < 0.12:
+                if chunk_data[y_grass - 1][x - 1] == AIR and chunk_data[y_grass - 1][x + 1] == AIR:
+                    th = random.randint(4, 6)
+                    for tree_h in range(1, th + 1):
+                        if y_grass - tree_h >= 0:
+                            chunk_data[y_grass - tree_h][x] = WOOD
+                    top_y = y_grass - th
+                    for ly in range(top_y - 2, top_y + 1):
+                        for lx in range(x - 2, x + 3):
+                            if 0 <= ly < WORLD_HEIGHT and 0 <= lx < CHUNK_SIZE:
+                                if chunk_data[ly][lx] == AIR:
+                                    chunk_data[ly][lx] = LEAVES
+                    if top_y - 3 >= 0:
+                        chunk_data[top_y - 3][x] = LEAVES
+
+        self.chunks[cx] = chunk_data
+        random.setstate(old_random)
+
+    def get_block(self, row, col):
+        if row < 0 or row >= WORLD_HEIGHT:
+            return AIR
+        chunk_x = col // CHUNK_SIZE
+        block_x = col % CHUNK_SIZE
+        if chunk_x not in self.chunks:
+            self.generate_chunk(chunk_x)
+        return self.chunks[chunk_x][row][block_x]
+
+    def set_block(self, row, col, block_type):
+        if row < 0 or row >= WORLD_HEIGHT:
+            return
+        chunk_x = col // CHUNK_SIZE
+        block_x = col % CHUNK_SIZE
+        if chunk_x not in self.chunks:
+            self.generate_chunk(chunk_x)
+        old_block = self.chunks[chunk_x][row][block_x]
+        if old_block == TORCH:
+            self.torch_positions.discard((row, col))
+        if block_type == TORCH:
+            self.torch_positions.add((row, col))
+        self.chunks[chunk_x][row][block_x] = block_type
+        # инвалидируем кэш чанка
+        self.chunk_surfaces.pop(chunk_x, None)
+
+    def get_chunk_surface(self, cx):
+        if cx in self.chunk_surfaces:
+            return self.chunk_surfaces[cx]
+        if cx not in self.chunks:
+            self.generate_chunk(cx)
+        chunk_data = self.chunks[cx]
+        # Рендерим весь чанк один раз, но используем convert() для скорости
+        surf = pygame.Surface((CHUNK_SIZE * TILE_SIZE, WORLD_HEIGHT * TILE_SIZE))
+        surf.fill((20, 20, 40))  # фоновый цвет пещеры
+        for y in range(WORLD_HEIGHT):
+            for x in range(CHUNK_SIZE):
+                block = chunk_data[y][x]
+                if block != AIR:
+                    tex = TEXTURES.get(block)
+                    if tex:
+                        surf.blit(tex, (x * TILE_SIZE, y * TILE_SIZE))
+        surf = surf.convert()  # КЛЮЧЕВАЯ ОПТИМИЗАЦИЯ: конвертируем в формат дисплея
+        self.chunk_surfaces[cx] = surf
+        return surf
+
+    def get_chunk_surface_slice(self, cx, row_start, row_end):
+        """Получить только нужный вертикальный срез чанка для рендера."""
+        full = self.get_chunk_surface(cx)
+        y_start = row_start * TILE_SIZE
+        height = (row_end - row_start) * TILE_SIZE
+        return full, y_start, height
+
+# --- ГЛАВНАЯ ИГРА ---
+class SandboxGame:
+    def __init__(self):
+        self.world = EndlessWorld()
+        start_x_tiles, start_y_tiles = 0, 10
+        for y in range(WORLD_HEIGHT):
+            if self.world.get_block(y, start_x_tiles) == GRASS:
+                start_y_tiles = y - 2
+                break
+        self.player = Player(start_x_tiles * TILE_SIZE, start_y_tiles * TILE_SIZE)
+        self.show_inventory = False
+        self.show_crafting = False
+        self.show_admin = False
+        self.camera_x, self.camera_y = 0, 0
+        self.touches = {}
+        self.joy_active = None
+        self.joy_x, self.joy_y = 0.0, 0.0
+        self.block_durability = {}
+        self.last_ui_click = 0
+        self.is_mobile = False
+        self.dragged_item_index = None
+        self.dragged_from_hotbar = False
+        self.inventory_scroll_offset = 0
+        self.dropped_items_list = []
+        self.day_time = 4500
+        self.day_duration = 18000
+        self.particles = []
+        self.messages = []
+        self.jump_held = False
+        self.down_held = False
+        self.sprint_held = False
+        self.fps_display = 0
+        self._fps_counter = 0
+        self._fps_timer = 0
+        self.init_ui()
+        init_player_sprites()  # создаём 4 базовых спрайта игрока
+
+    def init_ui(self):
+        self.joy_center = (100, SCREEN_HEIGHT - 100)
+        self.joy_radius = 60
+        self.jump_btn = pygame.Rect(SCREEN_WIDTH - 120, SCREEN_HEIGHT - 120, 95, 80)
+        self.down_btn = pygame.Rect(SCREEN_WIDTH - 120, SCREEN_HEIGHT - 200, 95, 60)
+        self.inv_btn = pygame.Rect(SCREEN_WIDTH - 390, 15, 110, 45)
+        self.craft_btn = pygame.Rect(SCREEN_WIDTH - 270, 15, 110, 45)
+        self.admin_btn = pygame.Rect(SCREEN_WIDTH - 150, 15, 130, 45)
+        hb_width = 240
+        hb_x = (SCREEN_WIDTH - hb_width) // 2
+        hb_y = SCREEN_HEIGHT - 80
+        self.hotbar_rects = [pygame.Rect(hb_x + i * 80, hb_y, 72, 72) for i in range(3)]
+
+    def show_discovery(self, text, color=(255, 220, 100)):
+        self.messages.append(DiscoveryMessage(text, color))
+
+    def spawn_particles(self, world_x, world_y, block_type):
+        if block_type in TEXTURES and TEXTURES[block_type]:
+            tex = TEXTURES[block_type]
+            try:
+                color = tex.get_at((TILE_SIZE // 2, TILE_SIZE // 2))[:3]
+            except:
+                color = (150, 150, 150)
+            for _ in range(8):
+                if len(self.particles) < 200:  # лимит частиц
+                    self.particles.append(Particle(world_x, world_y, color))
+
+    def get_slot_cost(self):
+        extra = self.player.max_slots - 4
+        return 100 + extra * 100 + extra * extra * 25
+
+    def get_available_recipes(self):
+        all_recipes = [
+            {"name": "Доска (4 шт)", "req": "1 Дерево", "items": {"Дерево": 1},
+             "give": ("Доска", 4), "need_table": False, "need_furnace": False,
+             "is_station": False, "unlock_by": "Дерево"},
+            {"name": "Палка (2 шт)", "req": "2 Доски", "items": {"Доска": 2},
+             "give": ("Палка", 2), "need_table": False, "need_furnace": False,
+             "is_station": False, "unlock_by": "Доска"},
+            {"name": "Верстак", "req": "10 Дерева", "items": {"Дерево": 10},
+             "give": ("Верстак", 1), "need_table": False, "need_furnace": False,
+             "is_station": True, "unlock_by": "Дерево"},
+            {"name": "Печка", "req": "20 Камня", "items": {"Камень": 20},
+             "give": ("Печка", 1), "need_table": True, "need_furnace": False,
+             "is_station": True, "unlock_by": "Камень"},
+            {"name": "Лестница (4 шт)", "req": "2 Дерева", "items": {"Дерево": 2},
+             "give": ("Лестница", 4), "need_table": False, "need_furnace": False,
+             "is_station": False, "unlock_by": "Дерево"},
+            {"name": "Факел (4 шт)", "req": "1 Уголь + 2 Палки", "items": {"Уголь": 1, "Палка": 2},
+             "give": ("Факел", 4), "need_table": False, "need_furnace": False,
+             "is_station": False, "unlock_by": "Уголь"},
+            {"name": "Зелье (2 шт)", "req": "3 Аметиста", "items": {"Аметист": 3},
+             "give": ("Зелье", 2), "need_table": True, "need_furnace": True,
+             "is_station": False, "unlock_by": "Аметист"},
+            {"name": "Жел. Слиток (8 шт)", "req": "8 Железа + 1 Уголь",
+             "items": {"Железо": 8, "Уголь": 1}, "give": ("Жел. Слиток", 8),
+             "need_table": True, "need_furnace": True, "is_station": False, "unlock_by": "Железо"},
+            {"name": "Золот. Слиток (4 шт)", "req": "4 Золота + 1 Уголь",
+             "items": {"Золото": 4, "Уголь": 1}, "give": ("Золот. Слиток", 4),
+             "need_table": True, "need_furnace": True, "is_station": False, "unlock_by": "Золото"},
+            {"name": "Мед. Кирка", "req": "10 Меди + 5 Палок + Дер. Кирка",
+             "items": {"Медь": 10, "Палка": 5, "Дер. Кирка": 1},
+             "give": ("Мед. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Медь"},
+            {"name": "Кам. Кирка", "req": "10 Камня + 5 Палок + Мед. Кирка",
+             "items": {"Камень": 10, "Палка": 5, "Мед. Кирка": 1},
+             "give": ("Кам. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Камень"},
+            {"name": "Сер. Кирка", "req": "10 Серебра + 5 Палок + Кам. Кирка",
+             "items": {"Серебро": 10, "Палка": 5, "Кам. Кирка": 1},
+             "give": ("Сер. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Серебро"},
+            {"name": "Жел. Кирка", "req": "10 Слитков + 5 Палок + Сер. Кирка",
+             "items": {"Жел. Слиток": 10, "Палка": 5, "Сер. Кирка": 1},
+             "give": ("Жел. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Железо"},
+            {"name": "Топ. Кирка", "req": "10 Топазов + 5 Палок + Жел. Кирка",
+             "items": {"Топаз": 10, "Палка": 5, "Жел. Кирка": 1},
+             "give": ("Топ. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Топаз"},
+            {"name": "Амет. Кирка", "req": "5 Аметистов + 5 Палок + Топ. Кирка",
+             "items": {"Аметист": 5, "Палка": 5, "Топ. Кирка": 1},
+             "give": ("Амет. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Аметист"},
+            {"name": "Сапф. Кирка", "req": "10 Сапфиров + 5 Палок + Амет. Кирка",
+             "items": {"Сапфир": 10, "Палка": 5, "Амет. Кирка": 1},
+             "give": ("Сапф. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Сапфир"},
+            {"name": "Изум. Кирка", "req": "5 Изумрудов + 5 Палок + Сапф. Кирка",
+             "items": {"Изумруд": 5, "Палка": 5, "Сапф. Кирка": 1},
+             "give": ("Изум. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Изумруд"},
+            {"name": "Крис. Кирка", "req": "10 Кристаллита + 5 Палок + Изум. Кирка",
+             "items": {"Кристаллит": 10, "Палка": 5, "Изум. Кирка": 1},
+             "give": ("Крис. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Кристаллит"},
+            {"name": "Алм. Кирка", "req": "10 Алмазов + 5 Палок + Крис. Кирка",
+             "items": {"Алмаз": 10, "Палка": 5, "Крис. Кирка": 1},
+             "give": ("Алм. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Алмаз"},
+            {"name": "Тен. Кирка", "req": "8 Тенерита + 5 Палок + Алм. Кирка",
+             "items": {"Тенерит": 8, "Палка": 5, "Алм. Кирка": 1},
+             "give": ("Тен. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Тенерит"},
+            {"name": "Руб. Кирка", "req": "5 Рубинов + 5 Палок + Тен. Кирка",
+             "items": {"Рубин": 5, "Палка": 5, "Тен. Кирка": 1},
+             "give": ("Руб. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Рубин"},
+            {"name": "Обс. Кирка", "req": "10 Обсидиана + 5 Палок + Руб. Кирка",
+             "items": {"Обсидиан": 10, "Палка": 5, "Руб. Кирка": 1},
+             "give": ("Обс. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Обсидиан"},
+            {"name": "Зол. Кирка", "req": "8 Золот.Слитков + 5 Палок + Сапф. Кирка",
+             "items": {"Золот. Слиток": 8, "Палка": 5, "Сапф. Кирка": 1},
+             "give": ("Зол. Кирка", 1), "need_table": True, "need_furnace": True,
+             "is_station": False, "unlock_by": "Золото"},
+            {"name": "Плат. Кирка", "req": "8 Платины + 5 Палок + Обс. Кирка",
+             "items": {"Платина": 8, "Палка": 5, "Обс. Кирка": 1},
+             "give": ("Плат. Кирка", 1), "need_table": True, "need_furnace": False,
+             "is_station": False, "unlock_by": "Платина"},
+            {"name": "Магм. Кирка", "req": "6 Магматита + 5 Палок + Плат. Кирка",
+             "items": {"Магматит": 6, "Палка": 5, "Плат. Кирка": 1},
+             "give": ("Магм. Кирка", 1), "need_table": True, "need_furnace": True,
+             "is_station": False, "unlock_by": "Магматит"},
+            {"name": "КвЗач. Кирка", "req": "5 Зач.Кварца + 5 Палок + Магм. Кирка",
+             "items": {"Зач.Кварц": 5, "Палка": 5, "Магм. Кирка": 1},
+             "give": ("КвЗач. Кирка", 1), "need_table": True, "need_furnace": True,
+             "is_station": False, "unlock_by": "Зач.Кварц"},
+            {"name": "Магнит (аксессуар)", "req": "5 Слитков + 2 Аметиста",
+             "items": {"Жел. Слиток": 5, "Аметист": 2}, "give": ("Магнит", 1),
+             "need_table": True, "need_furnace": False, "is_station": False,
+             "is_accessory_magnet": True, "unlock_by": "Аметист"},
+            {"name": "Амулет (двойной прыжок)", "req": "10 Аметистов + 1 Алмаз",
+             "items": {"Аметист": 10, "Алмаз": 1}, "give": ("Амулет", 1),
+             "need_table": True, "need_furnace": False, "is_station": False,
+             "is_accessory_amulet": True, "unlock_by": "Аметист"},
+            {"name": "Сапоги скорости", "req": "5 Золот.Слитков + 3 Изумруда",
+             "items": {"Золот. Слиток": 5, "Изумруд": 3}, "give": ("Сапоги", 1),
+             "need_table": True, "need_furnace": True, "is_station": False,
+             "is_accessory_boots": True, "unlock_by": "Золото"},
+            {"name": "Каска шахтёра", "req": "5 Слитков + 2 Факела + 1 Алмаз",
+             "items": {"Жел. Слиток": 5, "Факел": 2, "Алмаз": 1}, "give": ("Каска Шахт.", 1),
+             "need_table": True, "need_furnace": False, "is_station": False,
+             "is_accessory_helmet": True, "unlock_by": "Алмаз"},
+            {"name": "Пояс прочности", "req": "5 Платины + 3 Магматита",
+             "items": {"Платина": 5, "Магматит": 3}, "give": ("Пояс", 1),
+             "need_table": True, "need_furnace": True, "is_station": False,
+             "is_accessory_belt": True, "unlock_by": "Платина"},
+        ]
+        unlocked = []
+        for r in all_recipes:
+            if r["is_station"]:
+                if r["give"][0] == "Верстак" and self.player.has_crafting_table:
+                    continue
+                if r["give"][0] == "Печка" and self.player.has_furnace:
+                    continue
+            if r.get("is_accessory_amulet") and self.player.has_amulet:
+                continue
+            if r.get("is_accessory_magnet") and self.player.has_magnet:
+                continue
+            if r.get("is_accessory_boots") and self.player.has_speed_boots:
+                continue
+            if r.get("is_accessory_helmet") and self.player.has_miner_helmet:
+                continue
+            if r.get("is_accessory_belt") and self.player.has_tough_belt:
+                continue
+            if r["need_table"] and not self.player.has_crafting_table:
+                continue
+            if r["need_furnace"] and not self.player.has_furnace:
+                continue
+            if r["unlock_by"] in self.player.discovered_items or len(self.player.discovered_items) > 3:
+                unlocked.append(r)
+        return unlocked
+
+    def check_inventory_clicks(self, px, py):
+        panel_w, panel_h = 420, 540
+        panel_x = (SCREEN_WIDTH - panel_w) // 2
+        panel_y = (SCREEN_HEIGHT - panel_h) // 2
+        scroll_up_btn = pygame.Rect(panel_x + panel_w - 45, panel_y + 45, 30, 35)
+        scroll_down_btn = pygame.Rect(panel_x + panel_w - 45, panel_y + 90, 30, 35)
+        if scroll_up_btn.collidepoint(px, py) and self.inventory_scroll_offset > 0:
+            self.inventory_scroll_offset -= 1
+            return
+        if scroll_down_btn.collidepoint(px, py):
+            max_off = max(0, math.ceil(self.player.max_slots / 16) - 1)
+            if self.inventory_scroll_offset < max_off:
+                self.inventory_scroll_offset += 1
+            return
+
+        cost = self.get_slot_cost()
+        buy_btn_rect = pygame.Rect(panel_x + 20, panel_y + panel_h - 45, 300, 32)
+        if buy_btn_rect.collidepoint(px, py) and self.player.coins >= cost:
+            self.player.coins -= cost
+            self.player.max_slots += 1
+            self.player.inventory.append({"item": None, "count": 0})
+            return
+
+        cell_size = 65
+        spacing = 10
+        grid_start_x = panel_x + 20
+        grid_start_y = panel_y + 45
+        max_grid_h = 4 * (cell_size + spacing)
+        start_idx = self.inventory_scroll_offset * 16
+        end_idx = min(self.player.max_slots, start_idx + 16)
+
+        for i in range(start_idx, end_idx):
+            local_i = i - start_idx
+            row, col = local_i // 4, local_i % 4
+            cx = grid_start_x + col * (cell_size + spacing)
+            cy = grid_start_y + row * (cell_size + spacing)
+            if cy + cell_size > grid_start_y + max_grid_h:
+                continue
+            slot_rect = pygame.Rect(cx, cy, cell_size, cell_size)
+            if slot_rect.collidepoint(px, py):
+                slot = self.player.inventory[i]
+                if slot["item"] and PRICES.get(slot["item"]):
+                    is_tool = "Кирка" in slot["item"]
+                    if not is_tool or self.player.get_pickaxe_count() >= 2:
+                        s1 = pygame.Rect(cx, cy + cell_size - 18, cell_size // 2 - 2, 18)
+                        s_all = pygame.Rect(cx + cell_size // 2 + 1, cy + cell_size - 18, cell_size // 2 - 1, 18)
+                        price = PRICES[slot["item"]]
+                        if s1.collidepoint(px, py):
+                            self.player.coins += price
+                            slot["count"] -= 1
+                            if slot["count"] <= 0:
+                                slot["item"] = None
+                                slot["count"] = 0
+                            return
+                        if s_all.collidepoint(px, py):
+                            self.player.coins += slot["count"] * price
+                            slot["item"] = None
+                            slot["count"] = 0
+                            return
+                if self.dragged_item_index is None:
+                    if slot["item"] is not None:
+                        self.dragged_item_index = i
+                        self.dragged_from_hotbar = False
+                else:
+                    if self.dragged_from_hotbar:
+                        temp = self.player.hotbar[self.dragged_item_index]
+                        self.player.hotbar[self.dragged_item_index] = self.player.inventory[i]
+                        self.player.inventory[i] = temp
+                    else:
+                        temp = self.player.inventory[self.dragged_item_index]
+                        self.player.inventory[self.dragged_item_index] = self.player.inventory[i]
+                        self.player.inventory[i] = temp
+                    self.dragged_item_index = None
+                return
+
+        hb_cell = 65
+        hb_start_x = panel_x + 20
+        hb_start_y = grid_start_y + max_grid_h + 30
+        for idx in range(3):
+            cx = hb_start_x + idx * (hb_cell + 15)
+            cy = hb_start_y
+            hb_rect = pygame.Rect(cx, cy, hb_cell, hb_cell)
+            if hb_rect.collidepoint(px, py):
+                slot = self.player.hotbar[idx]
+                if slot["item"] and PRICES.get(slot["item"]):
+                    is_tool = "Кирка" in slot["item"]
+                    if not is_tool or self.player.get_pickaxe_count() >= 2:
+                        s1 = pygame.Rect(cx, cy + hb_cell - 18, hb_cell // 2 - 2, 18)
+                        s_all = pygame.Rect(cx + hb_cell // 2 + 1, cy + hb_cell - 18, hb_cell // 2 - 1, 18)
+                        price = PRICES[slot["item"]]
+                        if s1.collidepoint(px, py):
+                            self.player.coins += price
+                            slot["count"] -= 1
+                            if slot["count"] <= 0:
+                                slot["item"] = None
+                                slot["count"] = 0
+                            return
+                        if s_all.collidepoint(px, py):
+                            self.player.coins += slot["count"] * price
+                            slot["item"] = None
+                            slot["count"] = 0
+                            return
+                if self.dragged_item_index is None:
+                    if slot["item"] is not None:
+                        self.dragged_item_index = idx
+                        self.dragged_from_hotbar = True
+                else:
+                    if self.dragged_from_hotbar:
+                        temp = self.player.hotbar[self.dragged_item_index]
+                        self.player.hotbar[self.dragged_item_index] = self.player.hotbar[idx]
+                        self.player.hotbar[idx] = temp
+                    else:
+                        temp = self.player.inventory[self.dragged_item_index]
+                        self.player.inventory[self.dragged_item_index] = self.player.hotbar[idx]
+                        self.player.hotbar[idx] = temp
+                    self.dragged_item_index = None
+                return
+
+    def check_admin_clicks(self, px, py):
+        panel_w, panel_h = 560, 520
+        panel_x = (SCREEN_WIDTH - panel_w) // 2
+        panel_y = (SCREEN_HEIGHT - panel_h) // 2
+
+        # Монеты
+        coins_btn = pygame.Rect(panel_x + 15, panel_y + 30, 150, 28)
+        if coins_btn.collidepoint(px, py):
+            self.player.coins += 10000
+            return
+
+        # Ресурсы
+        all_resources = [
+            "Земля", "Дерево", "Камень", "Тём.Камень", "Крас.Камень",
+            "Доска", "Палка", "Уголь", "Медь", "Серебро",
+            "Железо", "Жел. Слиток", "Золото", "Золот. Слиток", "Топаз",
+            "Аметист", "Сапфир", "Алмаз", "Изумруд", "Кристаллит",
+            "Тенерит", "Обсидиан", "Рубин", "Платина", "Магматит",
+            "Зач.Кварц", "Лестница", "Факел",
+        ]
+        cols = 5
+        col_w = (panel_w - 30) // cols
+        for idx, res in enumerate(all_resources):
+            bx = panel_x + 15 + (idx % cols) * col_w
+            by = panel_y + 78 + (idx // cols) * 26
+            if pygame.Rect(bx, by, col_w - 4, 22).collidepoint(px, py):
+                for _ in range(100):
+                    self.player.add_item(res)
+                return
+
+        # Кирки
+        res_rows = math.ceil(len(all_resources) / cols)
+        pick_y = panel_y + 78 + res_rows * 26 + 24
+        all_picks = sorted(PICKAXE_DATA.keys(), key=lambda k: PICKAXE_DATA[k]["tier"])
+        pick_cols = 6
+        pick_w = (panel_w - 30) // pick_cols
+        for idx, pk in enumerate(all_picks):
+            bx = panel_x + 15 + (idx % pick_cols) * pick_w
+            by = pick_y + (idx // pick_cols) * 30
+            if pygame.Rect(bx, by, pick_w - 4, 26).collidepoint(px, py):
+                self.player.hotbar[0] = {"item": pk, "count": 1}
+                return
+
+        # Аксессуары
+        pick_rows = math.ceil(len(all_picks) / pick_cols)
+        acc_y = pick_y + pick_rows * 30 + 24
+        acc_list = ["Верстак", "Печка", "Амулет", "Магнит", "Сапоги", "Каска", "Пояс"]
+        btn_w = (panel_w - 30) // 4
+        for idx, txt in enumerate(acc_list):
+            bx = panel_x + 15 + (idx % 4) * (btn_w + 4)
+            by = acc_y + (idx // 4) * 32
+            if pygame.Rect(bx, by, btn_w, 28).collidepoint(px, py):
+                if txt == "Верстак":
+                    self.player.has_crafting_table = True
+                elif txt == "Печка":
+                    self.player.has_furnace = True
+                elif txt == "Амулет":
+                    self.player.has_amulet = True
+                elif txt == "Магнит":
+                    self.player.has_magnet = True
+                elif txt == "Сапоги":
+                    self.player.has_speed_boots = True
+                elif txt == "Каска":
+                    self.player.has_miner_helmet = True
+                elif txt == "Пояс":
+                    self.player.has_tough_belt = True
+                return
+
+    def check_crafting_clicks(self, px, py):
+        panel_w, panel_h = 380, 400
+        panel_x = (SCREEN_WIDTH - panel_w) // 2
+        panel_y = (SCREEN_HEIGHT - panel_h) // 2
+        recipes = self.get_available_recipes()
+        for idx, recipe in enumerate(recipes):
+            item_y = panel_y + 48 + idx * 36
+            if item_y + 32 > panel_y + panel_h - 10:
+                break
+            has_all = True
+            for req_item, req_count in recipe["items"].items():
+                total = sum(s["count"] for s in self.player.inventory + self.player.hotbar
+                            if s["item"] == req_item)
+                if total < req_count:
+                    has_all = False
+                    break
+            if has_all:
+                craft_btn = pygame.Rect(panel_x + panel_w - 95, item_y + 3, 80, 30)
+                if craft_btn.collidepoint(px, py):
+                    for req_item, req_count in recipe["items"].items():
+                        needed = req_count
+                        for slot in self.player.inventory + self.player.hotbar:
+                            if slot["item"] == req_item:
+                                take = min(slot["count"], needed)
+                                slot["count"] -= take
+                                needed -= take
+                                if slot["count"] == 0:
+                                    slot["item"] = None
+                                if needed == 0:
+                                    break
+                    give_name, give_count = recipe["give"]
+                    if give_name == "Верстак":
+                        self.player.has_crafting_table = True
+                    elif give_name == "Печка":
+                        self.player.has_furnace = True
+                    elif recipe.get("is_accessory_amulet"):
+                        self.player.has_amulet = True
+                    elif recipe.get("is_accessory_magnet"):
+                        self.player.has_magnet = True
+                    elif recipe.get("is_accessory_boots"):
+                        self.player.has_speed_boots = True
+                    elif recipe.get("is_accessory_helmet"):
+                        self.player.has_miner_helmet = True
+                    elif recipe.get("is_accessory_belt"):
+                        self.player.has_tough_belt = True
+                    elif "Кирка" in give_name:
+                        self.player.hotbar[self.player.active_hotbar_index] = {"item": give_name, "count": 1}
+                    else:
+                        for _ in range(give_count):
+                            self.player.add_item(give_name)
+                    self.show_discovery(f"Создано: {give_name}!", (100, 255, 100))
+                    return
+
+    def try_place_block(self, screen_x, screen_y):
+        world_x = screen_x + self.camera_x
+        world_y = screen_y + self.camera_y
+        col = int(world_x // TILE_SIZE)
+        row = int(world_y // TILE_SIZE)
+        if row < 0 or row >= WORLD_HEIGHT - 1:
+            return False
+        current_block = self.world.get_block(row, col)
+        slot = self.player.hotbar[self.player.active_hotbar_index]
+        if current_block == LADDER and slot["item"] == "Лестница" and slot["count"] > 0:
+            below_block = self.world.get_block(row + 1, col)
+            if below_block == AIR:
+                dist = math.hypot(world_x - self.player.rect.centerx,
+                                  world_y - self.player.rect.centery)
+                if dist < TILE_SIZE * 5:
+                    self.world.set_block(row + 1, col, LADDER)
+                    slot["count"] -= 1
+                    if slot["count"] <= 0:
+                        slot["item"] = None
+                        slot["count"] = 0
+                    return True
+            return False
+        if current_block != AIR:
+            return False
+        if self.player.rect.colliderect(pygame.Rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE)):
+            return False
+        block_map = {
+            "Земля": DIRT, "Камень": STONE, "Дерево": WOOD, "Лестница": LADDER,
+            "Медь": COPPER_ORE, "Серебро": SILVER_ORE, "Топаз": TOPAZ_ORE,
+            "Сапфир": SAPPHIRE_ORE, "Обсидиан": OBSIDIAN_ORE, "Факел": TORCH,
+            "Тём.Камень": DARK_STONE, "Крас.Камень": RED_STONE,
+            "Кристаллит": CRYSTALLITE_ORE, "Тенерит": TENEBRITE_ORE,
+                            "Золото": GOLD_ORE, "Платина": PLATINUM_ORE, "Магматит": MAGMATITE_ORE, "Зач.Кварц": ENCHANTED_QUARTZ,
+                            "Золото": GOLD_ORE, "Платина": PLATINUM_ORE, "Магматит": MAGMATITE_ORE, "Зач.Кварц": ENCHANTED_QUARTZ,
+        }
+        if slot["item"] in block_map and slot["count"] > 0:
+            dist = math.hypot(world_x - self.player.rect.centerx,
+                              world_y - self.player.rect.centery)
+            if dist < TILE_SIZE * 5:
+                self.world.set_block(row, col, block_map[slot["item"]])
+                slot["count"] -= 1
+                if slot["count"] <= 0:
+                    slot["item"] = None
+                    slot["count"] = 0
+                return True
+        return False
+
+    def dig_block(self, screen_x, screen_y):
+        world_x = screen_x + self.camera_x
+        world_y = screen_y + self.camera_y
+        col = int(world_x // TILE_SIZE)
+        row = int(world_y // TILE_SIZE)
+        if row < 0 or row >= WORLD_HEIGHT - 1:
+            return
+        tool = self.player.get_current_tool()
+        if tool is None or tool not in PICKAXE_DATA:
+            return
+        block = self.world.get_block(row, col)
+        if block == AIR:
+            return
+        dist = math.hypot(world_x - self.player.rect.centerx,
+                          world_y - self.player.rect.centery)
+        if dist >= TILE_SIZE * 5:
+            return
+        pk = PICKAXE_DATA[tool]
+        self.player.dig_anim_time = 1.0
+        if block == LEAVES:
+            self.world.set_block(row, col, AIR)
+            self.spawn_particles(world_x, world_y, LEAVES)
+            return
+        block_tier = ORE_TIERS.get(block, 0)
+        if pk["tier"] < block_tier:
+            return
+        if block in pk["multi_hit"]:
+            self.apply_hit_block(row, col, pk["multi_hit"][block], block)
+            return
+        area_w, area_h = pk["area"]
+        for dy in range(area_h):
+            for dx in range(area_w):
+                tr, tc = row + dy, col + dx
+                tb = self.world.get_block(tr, tc)
+                if tb != AIR and tb != LADDER and tb != TORCH:
+                    if tb in pk["multi_hit"]:
+                        continue
+                    tb_tier = ORE_TIERS.get(tb, 0)
+                    if pk["tier"] < tb_tier:
+                        continue
+                    self.spawn_dropped_item(tr, tc, tb)
+                    self.spawn_particles(tc * TILE_SIZE + TILE_SIZE // 2,
+                                         tr * TILE_SIZE + TILE_SIZE // 2, tb)
+
+    def spawn_dropped_item(self, row, col, block_type):
+        names = {
+            DIRT: "Земля", GRASS: "Земля", STONE: "Камень", WOOD: "Дерево",
+            COAL: "Уголь", IRON_ORE: "Железо", DIAMOND_ORE: "Алмаз",
+            AMETHYST_ORE: "Аметист", EMERALD_ORE: "Изумруд", RUBY_ORE: "Рубин",
+            LADDER: "Лестница", COPPER_ORE: "Медь", SILVER_ORE: "Серебро",
+            TOPAZ_ORE: "Топаз", SAPPHIRE_ORE: "Сапфир", OBSIDIAN_ORE: "Обсидиан",
+            DARK_STONE: "Тём.Камень", RED_STONE: "Крас.Камень",
+            CRYSTALLITE_ORE: "Кристаллит", TENEBRITE_ORE: "Тенерит",
+            GOLD_ORE: "Золото", PLATINUM_ORE: "Платина",
+            MAGMATITE_ORE: "Магматит", ENCHANTED_QUARTZ: "Зач.Кварц",
+        }
+        item_name = names.get(block_type, "Блок")
+        if item_name not in self.player.discovered_items and item_name not in (
+                "Земля", "Камень", "Дерево", "Лестница", "Тём.Камень", "Крас.Камень"):
+            self.show_discovery(f"Найдено: {item_name}!", (255, 200, 50))
+            self.player.discovered_items.add(item_name)
+        self.dropped_items_list.append(
+            DroppedItem(col * TILE_SIZE + 12, row * TILE_SIZE + 12, item_name, block_type))
+        self.world.set_block(row, col, AIR)
+        if (row, col) in self.block_durability:
+            del self.block_durability[(row, col)]
+
+    def apply_hit_block(self, row, col, max_hits, block_type):
+        coord = (row, col)
+        if coord not in self.block_durability:
+            self.block_durability[coord] = max_hits - 1
+        else:
+            self.block_durability[coord] -= 1
+        if self.block_durability[coord] <= 0:
+            self.spawn_dropped_item(row, col, block_type)
+            world_x = col * TILE_SIZE + TILE_SIZE // 2
+            world_y = row * TILE_SIZE + TILE_SIZE // 2
+            self.spawn_particles(world_x, world_y, block_type)
+            del self.block_durability[coord]
+        # инвалидируем чанк, чтобы трещины отобразились на чанке
+        chunk_x = col // CHUNK_SIZE
+        self.world.chunk_surfaces.pop(chunk_x, None)
+
+    def get_sky_color(self):
+        progress = self.day_time / self.day_duration
+        if progress < 0.35:
+            return (135, 206, 235)
+        elif progress < 0.50:
+            f = (progress - 0.35) / 0.15
+            return (int(135 + (30 - 135) * f),
+                    int(206 + (30 - 206) * f),
+                    int(235 + (60 - 235) * f))
+        elif progress < 0.85:
+            return (20, 25, 45)
+        else:
+            f = (progress - 0.85) / 0.15
+            return (int(20 + (135 - 20) * f),
+                    int(25 + (206 - 25) * f),
+                    int(45 + (235 - 45) * f))
+
+    # --- ГЛАВНЫЙ ЦИКЛ ---
+    def run(self):
+        global SCREEN_WIDTH, SCREEN_HEIGHT
+        running = True
+        while running:
+            w, h = screen.get_size()
+            if w != SCREEN_WIDTH or h != SCREEN_HEIGHT:
+                SCREEN_WIDTH, SCREEN_HEIGHT = w, h
+                _DARK_OVERLAY_CACHE.clear()
+                global _TORCH_GLOW_SURFACE
+                _TORCH_GLOW_SURFACE = None
+                self.init_ui()
+            running = self.handle_input()
+            self.update()
+            self.draw()
+            clock.tick(FPS)
+            self._fps_counter += 1
+            self._fps_timer += clock.get_time()
+            if self._fps_timer >= 500:
+                self.fps_display = int(self._fps_counter / (self._fps_timer / 1000.0))
+                self._fps_counter = 0
+                self._fps_timer = 0
+        pygame.quit()
+        sys.exit()
+
+    def handle_input(self):
+        current_time = pygame.time.get_ticks()
+        keys = pygame.key.get_pressed()
+        jump_held = keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]
+        down_held = keys[pygame.K_s] or keys[pygame.K_DOWN]
+        sprint_held = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+        for tid, tpos in self.touches.items():
+            if self.jump_btn.collidepoint(tpos):
+                jump_held = True
+            if self.down_btn.collidepoint(tpos):
+                down_held = True
+
+        any_ui_open = self.show_inventory or self.show_crafting or self.show_admin
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return False
+            elif event.type == pygame.FINGERDOWN:
+                self.is_mobile = True
+                tx, ty = event.x * SCREEN_WIDTH, event.y * SCREEN_HEIGHT
+                self.touches[event.finger_id] = (tx, ty)
+                if self.inv_btn.collidepoint(tx, ty) and current_time - self.last_ui_click > 250:
+                    self.show_inventory = not self.show_inventory
+                    if self.show_inventory:
+                        self.show_crafting = False
+                        self.show_admin = False
+                    self.inventory_scroll_offset = 0
+                    self.dragged_item_index = None
+                    self.last_ui_click = current_time
+                elif self.craft_btn.collidepoint(tx, ty) and current_time - self.last_ui_click > 250:
+                    self.show_crafting = not self.show_crafting
+                    if self.show_crafting:
+                        self.show_inventory = False
+                        self.show_admin = False
+                    self.last_ui_click = current_time
+                elif self.admin_btn.collidepoint(tx, ty) and current_time - self.last_ui_click > 250:
+                    self.show_admin = not self.show_admin
+                    if self.show_admin:
+                        self.show_inventory = False
+                        self.show_crafting = False
+                    self.last_ui_click = current_time
+                elif self.jump_btn.collidepoint(tx, ty):
+                    self.player.jump()
+                elif self.down_btn.collidepoint(tx, ty):
+                    self.down_held = True
+                elif self.show_inventory:
+                    self.check_inventory_clicks(tx, ty)
+                elif self.show_crafting:
+                    self.check_crafting_clicks(tx, ty)
+                elif self.show_admin:
+                    self.check_admin_clicks(tx, ty)
+                elif not any_ui_open:
+                    for i, hr in enumerate(self.hotbar_rects):
+                        if hr.collidepoint(tx, ty):
+                            self.player.active_hotbar_index = i
+                            break
+                    else:
+                        dist = math.hypot(tx - self.joy_center[0], ty - self.joy_center[1])
+                        if dist < self.joy_radius + 20:
+                            self.joy_active = event.finger_id
+                        elif not self.jump_btn.collidepoint(tx, ty) and not self.down_btn.collidepoint(tx, ty):
+                            if not self.try_place_block(tx, ty):
+                                self.dig_block(tx, ty)
+            elif event.type == pygame.FINGERMOTION:
+                self.touches[event.finger_id] = (event.x * SCREEN_WIDTH, event.y * SCREEN_HEIGHT)
+            elif event.type == pygame.FINGERUP:
+                if event.finger_id in self.touches:
+                    del self.touches[event.finger_id]
+                if self.joy_active == event.finger_id:
+                    self.joy_active = None
+                    self.joy_x = 0.0
+                    self.joy_y = 0.0
+            elif event.type == pygame.MOUSEBUTTONDOWN and not self.is_mobile:
+                if event.button == 1:
+                    mx, my = event.pos
+                    if self.inv_btn.collidepoint(mx, my):
+                        self.show_inventory = not self.show_inventory
+                        if self.show_inventory:
+                            self.show_crafting = False
+                            self.show_admin = False
+                        self.inventory_scroll_offset = 0
+                        self.dragged_item_index = None
+                    elif self.craft_btn.collidepoint(mx, my):
+                        self.show_crafting = not self.show_crafting
+                        if self.show_crafting:
+                            self.show_inventory = False
+                            self.show_admin = False
+                    elif self.admin_btn.collidepoint(mx, my):
+                        self.show_admin = not self.show_admin
+                        if self.show_admin:
+                            self.show_inventory = False
+                            self.show_crafting = False
+                    elif self.jump_btn.collidepoint(mx, my):
+                        self.player.jump()
+                    elif self.down_btn.collidepoint(mx, my):
+                        self.down_held = True
+                    elif self.show_inventory:
+                        self.check_inventory_clicks(mx, my)
+                    elif self.show_crafting:
+                        self.check_crafting_clicks(mx, my)
+                    elif self.show_admin:
+                        self.check_admin_clicks(mx, my)
+                    elif not any_ui_open:
+                        for i, hr in enumerate(self.hotbar_rects):
+                            if hr.collidepoint(mx, my):
+                                self.player.active_hotbar_index = i
+                                break
+                        else:
+                            dist = math.hypot(mx - self.joy_center[0], my - self.joy_center[1])
+                            if dist > self.joy_radius + 20:
+                                if not self.try_place_block(mx, my):
+                                    self.dig_block(mx, my)
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_e:
+                    self.show_inventory = not self.show_inventory
+                    if self.show_inventory:
+                        self.show_crafting = False
+                elif event.key == pygame.K_1:
+                    self.player.active_hotbar_index = 0
+                elif event.key == pygame.K_2:
+                    self.player.active_hotbar_index = 1
+                elif event.key == pygame.K_3:
+                    self.player.active_hotbar_index = 2
+                elif event.key in (pygame.K_SPACE, pygame.K_w, pygame.K_UP):
+                    self.player.jump()
+
+        if self.joy_active is not None and self.joy_active in self.touches:
+            tx, ty = self.touches[self.joy_active]
+            dx = tx - self.joy_center[0]
+            dy = ty - self.joy_center[1]
+            self.joy_x = max(-1.0, min(1.0, dx / self.joy_radius))
+            self.joy_y = max(-1.0, min(1.0, dy / self.joy_radius))
+        else:
+            self.joy_x = 0.0
+            self.joy_y = 0.0
+            self.joy_active = None
+
+        self.player.target_vx = 0
+        if self.joy_x > 0.3 or keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            self.player.target_vx = WALK_SPEED
+        elif self.joy_x < -0.3 or keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            self.player.target_vx = -WALK_SPEED
+        if self.joy_y > 0.4:
+            down_held = True
+        self.jump_held = jump_held
+        self.down_held = down_held
+        self.sprint_held = sprint_held
+        return True
+
+    def update(self):
+        self.day_time = (self.day_time + 1) % self.day_duration
+        if self.player.dig_anim_time > 0:
+            self.player.dig_anim_time -= 0.15
+            if self.player.dig_anim_time < 0:
+                self.player.dig_anim_time = 0.0
+        self.player.update(self.world, self.jump_held, self.down_held, self.sprint_held)
+        player_c = self.player.rect.center
+        for item in self.dropped_items_list[:]:
+            item.update(player_c, self.player.has_magnet, self.world)
+            if self.player.rect.colliderect(item.rect):
+                if self.player.add_item(item.name):
+                    self.dropped_items_list.remove(item)
+        for p in self.particles[:]:
+            if not p.update():
+                self.particles.remove(p)
+        for m in self.messages[:]:
+            if not m.update():
+                self.messages.remove(m)
+        self.camera_x = self.player.rect.centerx - SCREEN_WIDTH // 2
+        self.camera_y = self.player.rect.centery - SCREEN_HEIGHT // 2
+        self.camera_y = max(0, min(self.camera_y, WORLD_HEIGHT * TILE_SIZE - SCREEN_HEIGHT))
+
+    def draw(self):
+        sky_color = self.get_sky_color()
+        screen.fill(sky_color)
+        progress = self.day_time / self.day_duration
+        if 0.50 < progress < 0.85:
+            random.seed(42)
+            for _ in range(40):
+                sx = random.randint(0, SCREEN_WIDTH)
+                sy = random.randint(0, int(SCREEN_HEIGHT * 0.4))
+                pygame.draw.circle(screen, (255, 255, 255), (sx, sy), 1)
+            random.seed()
+
+        # Определяем видимые чанки и строки
+        start_chunk = int(self.camera_x // (CHUNK_SIZE * TILE_SIZE)) - 1
+        end_chunk = int((self.camera_x + SCREEN_WIDTH) // (CHUNK_SIZE * TILE_SIZE)) + 1
+        visible_row_start = max(0, int(self.camera_y // TILE_SIZE) - 1)
+        visible_row_end = min(WORLD_HEIGHT, int((self.camera_y + SCREEN_HEIGHT) // TILE_SIZE) + 2)
+
+        for cx in range(start_chunk, end_chunk + 1):
+            chunk_surf, y_src, h_src = self.world.get_chunk_surface_slice(
+                cx, visible_row_start, visible_row_end)
+            screen_x = cx * CHUNK_SIZE * TILE_SIZE - int(self.camera_x)
+            screen_y = visible_row_start * TILE_SIZE - int(self.camera_y)
+            src_rect = pygame.Rect(0, y_src, CHUNK_SIZE * TILE_SIZE, h_src)
+            screen.blit(chunk_surf, (screen_x, screen_y), src_rect)
+
+        # Поверх чанков рисуем блоки с трещинами (прочностью)
+        for (r, c) in self.block_durability:
+            block = self.world.get_block(r, c)
+            if block != AIR:
+                sx = c * TILE_SIZE - self.camera_x
+                sy = r * TILE_SIZE - self.camera_y
+                cracked = get_cracked_texture(block)
+                if cracked:
+                    screen.blit(cracked, (sx, sy))
+
+        # Ореолы факелов
+        glow_surf = get_torch_glow()
+        for (tr, tc) in self.world.torch_positions:
+            if start_chunk - 3 <= tc // CHUNK_SIZE <= end_chunk + 3 and 0 <= tr < WORLD_HEIGHT:
+                sx = tc * TILE_SIZE - self.camera_x
+                sy = tr * TILE_SIZE - self.camera_y
+                screen.blit(glow_surf, (sx - _TORCH_GLOW_RADIUS, sy - _TORCH_GLOW_RADIUS),
+                            special_flags=pygame.BLEND_ADD)
+
+        # Темный оверлей
+        player_y_world = self.player.rect.centery
+        depth_factor = max(0, min(1, 1 - player_y_world / (WORLD_HEIGHT * TILE_SIZE)))
+        is_night = 0.50 < progress < 0.85
+        ambient_light = max(0.4, depth_factor) if not is_night else max(0.2, depth_factor * 0.6)
+        global_dark_alpha = int((1 - ambient_light) * 180)
+        if global_dark_alpha > 0:
+            dark = _get_dark_overlay(global_dark_alpha, SCREEN_WIDTH, SCREEN_HEIGHT)
+            screen.blit(dark, (0, 0))
+
+        for item in self.dropped_items_list:
+            ix = item.x - self.camera_x
+            iy = item.y - self.camera_y
+            if -20 <= ix < SCREEN_WIDTH + 20 and -20 <= iy < SCREEN_HEIGHT + 20:
+                scaled = get_scaled_texture(item.block_type, 16)
+                if scaled:
+                    screen.blit(scaled, (ix, iy))
+
+        p_sprite = self.player.get_current_sprite()
+        screen.blit(p_sprite, (self.player.rect.x - self.camera_x,
+                                self.player.rect.y - self.camera_y))
+
+        for p in self.particles:
+            p.draw(screen, self.camera_x, self.camera_y)
+
+        # Джойстик
+        pygame.draw.circle(screen, (80, 80, 80), self.joy_center, self.joy_radius, 4)
+        kx = self.joy_center[0] + self.joy_x * self.joy_radius
+        ky = self.joy_center[1] + self.joy_y * self.joy_radius
+        pygame.draw.circle(screen, (220, 80, 80), (int(kx), int(ky)), 25)
+
+        # Кнопка прыжка
+        pygame.draw.circle(screen, (80, 80, 80), self.jump_btn.center, 40, 4)
+        tj = font_large.render("Прыжок", True, (255, 255, 255))
+        screen.blit(tj, (self.jump_btn.centerx - tj.get_width() // 2,
+                         self.jump_btn.centery - tj.get_height() // 2))
+
+        # Кнопка "вниз" (для лестниц)
+        if self.player.check_ladder(self.world):
+            pygame.draw.rect(screen, (60, 60, 80), self.down_btn)
+            pygame.draw.rect(screen, (150, 150, 200), self.down_btn, 3)
+            td = font_large.render("Вниз", True, (255, 255, 255))
+            screen.blit(td, (self.down_btn.centerx - td.get_width() // 2,
+                             self.down_btn.centery - td.get_height() // 2))
+
+        for btn, txt, border in [(self.inv_btn, "Рюкзак", (200, 200, 200)),
+                                  (self.craft_btn, "Крафт", (200, 200, 200)),
+                                  (self.admin_btn, "Админка", (250, 100, 100))]:
+            pygame.draw.rect(screen, (60, 60, 60), btn)
+            pygame.draw.rect(screen, border, btn, 2)
+            tr = font_large.render(txt, True, (255, 255, 255))
+            screen.blit(tr, (btn.centerx - tr.get_width() // 2,
+                             btn.centery - tr.get_height() // 2))
+
+        screen.blit(font_large.render(f"Монеты: {self.player.coins}", True, (255, 215, 0)), (20, 20))
+        time_txt = "Ночь" if (0.50 < progress < 0.85) else "День"
+        screen.blit(font_large.render(f"Время: {time_txt}", True, (255, 255, 255)), (20, 42))
+        cx = self.player.rect.x // TILE_SIZE
+        cy = self.player.rect.y // TILE_SIZE
+        screen.blit(font_large.render(f"X:{cx} Y:{cy}", True, (240, 240, 240)), (20, 64))
+        fps_color = (100, 255, 100) if self.fps_display >= 45 else (
+            (255, 200, 50) if self.fps_display >= 25 else (255, 80, 80))
+        screen.blit(font_large.render(f"FPS: {self.fps_display}", True, fps_color), (20, 86))
+        acc_text = []
+        if self.player.has_amulet:
+            acc_text.append("Амулет")
+        if self.player.has_magnet:
+            acc_text.append("Магнит")
+        if self.player.has_speed_boots:
+            acc_text.append("Сапоги")
+        if self.player.has_miner_helmet:
+            acc_text.append("Каска")
+        if self.player.has_tough_belt:
+            acc_text.append("Пояс")
+        if acc_text:
+            screen.blit(font_hud.render(f"Акс: {', '.join(acc_text)}", True, (200, 150, 255)), (20, 106))
+
+        for i, msg in enumerate(self.messages):
+            alpha = min(255, msg.timer * 4)
+            s = font_msg.render(msg.text, True, msg.color)
+            surf = pygame.Surface((s.get_width() + 20, s.get_height() + 10), pygame.SRCALPHA)
+            surf.fill((0, 0, 0, min(180, alpha)))
+            surf.blit(s, (10, 5))
+            screen.blit(surf, (SCREEN_WIDTH // 2 - surf.get_width() // 2,
+                               80 + i * 30 - int(msg.y_offset)))
+
+        if not self.show_inventory:
+            for i in range(3):
+                hr = self.hotbar_rects[i]
+                if i == self.player.active_hotbar_index:
+                    pygame.draw.rect(screen, (46, 204, 113), hr, 4)
+                    pygame.draw.rect(screen, (50, 80, 60), hr.inflate(-8, -8))
+                else:
+                    pygame.draw.rect(screen, (100, 100, 100), hr, 2)
+                    pygame.draw.rect(screen, (40, 40, 40), hr.inflate(-4, -4))
+                slot = self.player.hotbar[i]
+                if slot["item"]:
+                    screen.blit(font_small.render(slot["item"][:11], True, (255, 255, 255)),
+                                (hr.x + 4, hr.y + 6))
+                    if "Кирка" in slot["item"]:
+                        pygame.draw.line(screen, (130, 90, 60),
+                                         (hr.x + 18, hr.y + 52), (hr.x + 48, hr.y + 22), 4)
+                    else:
+                        bm = {
+                            "Земля": DIRT, "Камень": STONE, "Дерево": WOOD, "Уголь": COAL,
+                            "Железо": IRON_ORE, "Алмаз": DIAMOND_ORE, "Аметист": AMETHYST_ORE,
+                            "Изумруд": EMERALD_ORE, "Рубин": RUBY_ORE, "Лестница": LADDER,
+                            "Медь": COPPER_ORE, "Серебро": SILVER_ORE, "Топаз": TOPAZ_ORE,
+                            "Сапфир": SAPPHIRE_ORE, "Обсидиан": OBSIDIAN_ORE, "Факел": TORCH,
+                            "Тём.Камень": DARK_STONE, "Крас.Камень": RED_STONE,
+                            "Кристаллит": CRYSTALLITE_ORE, "Тенерит": TENEBRITE_ORE,
+                            "Золото": GOLD_ORE, "Платина": PLATINUM_ORE, "Магматит": MAGMATITE_ORE, "Зач.Кварц": ENCHANTED_QUARTZ,
+                            "Золото": GOLD_ORE, "Платина": PLATINUM_ORE, "Магматит": MAGMATITE_ORE, "Зач.Кварц": ENCHANTED_QUARTZ,
+                        }
+                        if slot["item"] in bm:
+                            screen.blit(get_scaled_texture(bm[slot["item"]], 32),
+                                        (hr.x + 20, hr.y + 22))
+                    if slot["count"] > 1:
+                        tc = font_small.render(str(slot["count"]), True, (255, 240, 100))
+                        screen.blit(tc, (hr.right - tc.get_width() - 8, hr.bottom - 22))
+                nl = font_small.render(str(i + 1), True, (180, 180, 180))
+                screen.blit(nl, (hr.x + 6, hr.bottom - 16))
+
+        # --- ОКНО ИНВЕНТАРЯ ---
+        if self.show_inventory:
+            pw, ph = 420, 540
+            px = (SCREEN_WIDTH - pw) // 2
+            py = (SCREEN_HEIGHT - ph) // 2
+            pygame.draw.rect(screen, (40, 40, 40), (px, py, pw, ph))
+            pygame.draw.rect(screen, (200, 180, 120), (px, py, pw, ph), 4)
+            t = font_large.render("РЮКЗАК (Drag & Drop для переноса)", True, (200, 180, 120))
+            screen.blit(t, (px + (pw - t.get_width()) // 2, py + 8))
+            cell, gap = 65, 10
+            gsx, gsy = px + 20, py + 45
+            max_rows = 4
+            start_idx = self.inventory_scroll_offset * 16
+            end_idx = min(self.player.max_slots, start_idx + 16)
+            for i in range(start_idx, end_idx):
+                li = i - start_idx
+                row, col = li // 4, li % 4
+                cx = gsx + col * (cell + gap)
+                cy = gsy + row * (cell + gap)
+                if row >= max_rows:
+                    continue
+                if i < self.player.max_slots:
+                    color = (90, 90, 50) if (self.dragged_item_index == i and not self.dragged_from_hotbar) else (60, 60, 60)
+                    pygame.draw.rect(screen, color, (cx, cy, cell, cell))
+                    pygame.draw.rect(screen, (120, 120, 120), (cx, cy, cell, cell), 2)
+                    slot = self.player.inventory[i]
+                    if slot["item"]:
+                        screen.blit(font_small.render(slot["item"][:11], True, (255, 255, 255)),
+                                    (cx + 4, cy + 3))
+                        if "Кирка" in slot["item"]:
+                            pygame.draw.line(screen, (130, 90, 60),
+                                             (cx + 18, cy + 48), (cx + 46, cy + 18), 4)
+                        else:
+                            bm = {
+                                "Земля": DIRT, "Камень": STONE, "Дерево": WOOD,
+                                "Уголь": COAL, "Железо": IRON_ORE, "Алмаз": DIAMOND_ORE,
+                                "Аметист": AMETHYST_ORE, "Изумруд": EMERALD_ORE,
+                                "Рубин": RUBY_ORE, "Лестница": LADDER, "Медь": COPPER_ORE,
+                                "Серебро": SILVER_ORE, "Топаз": TOPAZ_ORE,
+                                "Сапфир": SAPPHIRE_ORE, "Обсидиан": OBSIDIAN_ORE,
+                                "Факел": TORCH, "Тём.Камень": DARK_STONE,
+                                "Крас.Камень": RED_STONE, "Кристаллит": CRYSTALLITE_ORE,
+                                "Тенерит": TENEBRITE_ORE,
+                            "Золото": GOLD_ORE, "Платина": PLATINUM_ORE, "Магматит": MAGMATITE_ORE, "Зач.Кварц": ENCHANTED_QUARTZ,
+                            }
+                            if slot["item"] in bm:
+                                screen.blit(get_scaled_texture(bm[slot["item"]], 30),
+                                            (cx + 17, cy + 15))
+                        if slot["count"] > 1:
+                            tc = font_small.render(str(slot["count"]), True, (255, 240, 100))
+                            screen.blit(tc, (cx + cell - tc.get_width() - 6, cy + cell - 30))
+                        is_tool = "Кирка" in slot["item"]
+                        if not is_tool or self.player.get_pickaxe_count() >= 2:
+                            s1 = pygame.Rect(cx, cy + cell - 18, cell // 2 - 2, 18)
+                            s_all = pygame.Rect(cx + cell // 2 + 1, cy + cell - 18, cell // 2 - 1, 18)
+                            pygame.draw.rect(screen, (180, 80, 80), s1)
+                            pygame.draw.rect(screen, (140, 50, 50), s_all)
+                            t1 = font_small.render("1", True, (255, 255, 255))
+                            ta = font_small.render("Всё", True, (255, 255, 255))
+                            screen.blit(t1, (s1.centerx - t1.get_width() // 2,
+                                             s1.centery - t1.get_height() // 2 + 1))
+                            screen.blit(ta, (s_all.centerx - ta.get_width() // 2,
+                                             s_all.centery - ta.get_height() // 2 + 1))
+                else:
+                    pygame.draw.rect(screen, (25, 25, 25), (cx, cy, cell, cell))
+                    pygame.draw.rect(screen, (80, 50, 50), (cx, cy, cell, cell), 2)
+                    tl = font_small.render("Блок", True, (150, 100, 100))
+                    screen.blit(tl, (cx + (cell - tl.get_width()) // 2, cy + 22))
+
+            hb_y = gsy + max_rows * (cell + gap) + 35
+            hb_label = font_hud.render("Панель быстрого доступа:", True, (200, 180, 120))
+            screen.blit(hb_label, (gsx, hb_y - 16))
+            for idx in range(3):
+                cx = gsx + idx * (cell + 15)
+                cy = hb_y
+                color = (90, 90, 50) if (self.dragged_item_index == idx and self.dragged_from_hotbar) else (50, 50, 70)
+                pygame.draw.rect(screen, color, (cx, cy, cell, cell))
+                pygame.draw.rect(screen, (100, 149, 237), (cx, cy, cell, cell), 2)
+                slot = self.player.hotbar[idx]
+                if slot["item"]:
+                    screen.blit(font_small.render(slot["item"][:11], True, (255, 255, 255)),
+                                (cx + 4, cy + 3))
+                    if "Кирка" in slot["item"]:
+                        pygame.draw.line(screen, (130, 90, 60),
+                                         (cx + 18, cy + 48), (cx + 46, cy + 18), 4)
+                    else:
+                        bm = {
+                            "Земля": DIRT, "Камень": STONE, "Дерево": WOOD,
+                            "Уголь": COAL, "Железо": IRON_ORE, "Алмаз": DIAMOND_ORE,
+                            "Аметист": AMETHYST_ORE, "Изумруд": EMERALD_ORE,
+                            "Рубин": RUBY_ORE, "Лестница": LADDER, "Медь": COPPER_ORE,
+                            "Серебро": SILVER_ORE, "Топаз": TOPAZ_ORE,
+                            "Сапфир": SAPPHIRE_ORE, "Обсидиан": OBSIDIAN_ORE,
+                            "Факел": TORCH, "Тём.Камень": DARK_STONE,
+                            "Крас.Камень": RED_STONE, "Кристаллит": CRYSTALLITE_ORE,
+                            "Тенерит": TENEBRITE_ORE,
+                            "Золото": GOLD_ORE, "Платина": PLATINUM_ORE, "Магматит": MAGMATITE_ORE, "Зач.Кварц": ENCHANTED_QUARTZ,
+                        }
+                        if slot["item"] in bm:
+                            screen.blit(get_scaled_texture(bm[slot["item"]], 30),
+                                        (cx + 17, cy + 15))
+                    if slot["count"] > 1:
+                        tc = font_small.render(str(slot["count"]), True, (255, 240, 100))
+                        screen.blit(tc, (cx + cell - tc.get_width() - 6, cy + cell - 30))
+                    is_tool = "Кирка" in slot["item"]
+                    if not is_tool or self.player.get_pickaxe_count() >= 2:
+                        s1 = pygame.Rect(cx, cy + cell - 18, cell // 2 - 2, 18)
+                        s_all = pygame.Rect(cx + cell // 2 + 1, cy + cell - 18, cell // 2 - 1, 18)
+                        pygame.draw.rect(screen, (180, 80, 80), s1)
+                        pygame.draw.rect(screen, (140, 50, 50), s_all)
+                        t1 = font_small.render("1", True, (255, 255, 255))
+                        ta = font_small.render("Всё", True, (255, 255, 255))
+                        screen.blit(t1, (s1.centerx - t1.get_width() // 2,
+                                         s1.centery - t1.get_height() // 2 + 1))
+                        screen.blit(ta, (s_all.centerx - ta.get_width() // 2,
+                                         s_all.centery - ta.get_height() // 2 + 1))
+
+            cost = self.get_slot_cost()
+            bbr = pygame.Rect(px + 20, py + ph - 50, 300, 32)
+            pygame.draw.rect(screen, (70, 130, 70), bbr)
+            pygame.draw.rect(screen, (220, 255, 220), bbr, 2)
+            tb = font_large.render(f"Новый слот: {cost} монет", True, (255, 255, 255))
+            screen.blit(tb, (bbr.centerx - tb.get_width() // 2, bbr.centery - tb.get_height() // 2))
+
+            su = pygame.Rect(px + pw - 45, py + 45, 30, 35)
+            sd = pygame.Rect(px + pw - 45, py + 90, 30, 35)
+            pygame.draw.rect(screen, (80, 80, 80), su)
+            pygame.draw.rect(screen, (150, 150, 150), su, 1)
+            pygame.draw.rect(screen, (80, 80, 80), sd)
+            pygame.draw.rect(screen, (150, 150, 150), sd, 1)
+            tu = font_hud.render("^", True, (255, 255, 255))
+            td = font_hud.render("v", True, (255, 255, 255))
+            screen.blit(tu, (su.centerx - tu.get_width() // 2, su.centery - tu.get_height() // 2))
+            screen.blit(td, (sd.centerx - td.get_width() // 2, sd.centery - td.get_height() // 2))
+            if self.dragged_item_index is not None:
+                mx, my = pygame.mouse.get_pos()
+                pygame.draw.rect(screen, (255, 255, 0), (mx - 15, my - 15, 30, 30), 2)
+
+        # --- ОКНО КРАФТА ---
+        if self.show_crafting:
+            pw, ph = 380, 400
+            px = (SCREEN_WIDTH - pw) // 2
+            py = (SCREEN_HEIGHT - ph) // 2
+            pygame.draw.rect(screen, (40, 40, 40), (px, py, pw, ph))
+            pygame.draw.rect(screen, (100, 180, 200), (px, py, pw, ph), 4)
+            t = font_large.render("РЕЦЕПТЫ КРАФТА", True, (100, 180, 200))
+            screen.blit(t, (px + (pw - t.get_width()) // 2, py + 10))
+            stations = f"Верстак: {'Есть' if self.player.has_crafting_table else 'Нет'} | Печка: {'Есть' if self.player.has_furnace else 'Нет'}"
+            screen.blit(font_hud.render(stations, True, (255, 215, 0)), (px + 15, py + 30))
+            acc = []
+            if self.player.has_amulet:
+                acc.append("Амулет")
+            if self.player.has_magnet:
+                acc.append("Магнит")
+            if acc:
+                screen.blit(font_hud.render(f"Аксессуары: {', '.join(acc)}", True, (200, 150, 255)),
+                            (px + 15, py + 46))
+            recipe_start_y = py + 64
+            recipes = self.get_available_recipes()
+            if not recipes:
+                et = font_hud.render("Добудьте Дерево для начала!", True, (200, 200, 200))
+                screen.blit(et, (px + (pw - et.get_width()) // 2, py + 100))
+            for idx, recipe in enumerate(recipes):
+                iy = recipe_start_y + idx * 34
+                if iy + 30 > py + ph - 8:
+                    break
+                pygame.draw.rect(screen, (55, 55, 55), (px + 12, iy, pw - 24, 30))
+                screen.blit(font_hud.render(recipe["name"], True, (255, 255, 255)),
+                            (px + 16, iy + 2))
+                screen.blit(font_small.render(recipe["req"], True, (200, 200, 200)),
+                            (px + 16, iy + 17))
+                has_all = True
+                for ri, rc in recipe["items"].items():
+                    total = sum(s["count"] for s in self.player.inventory + self.player.hotbar
+                                if s["item"] == ri)
+                    if total < rc:
+                        has_all = False
+                        break
+                if has_all:
+                    cb = pygame.Rect(px + pw - 95, iy + 2, 80, 26)
+                    pygame.draw.rect(screen, (70, 140, 70), cb)
+                    ct = font_small.render("Создать", True, (255, 255, 255))
+                    screen.blit(ct, (cb.centerx - ct.get_width() // 2,
+                                     cb.centery - ct.get_height() // 2))
+
+        # --- АДМИН-ПАНЕЛЬ ---
+        if self.show_admin:
+            pw, ph = 560, 520
+            px = (SCREEN_WIDTH - pw) // 2
+            py = (SCREEN_HEIGHT - ph) // 2
+            pygame.draw.rect(screen, (30, 20, 20), (px, py, pw, ph))
+            pygame.draw.rect(screen, (250, 100, 100), (px, py, pw, ph), 4)
+            t = font_large.render("АДМИН-ПАНЕЛЬ", True, (250, 100, 100))
+            screen.blit(t, (px + (pw - t.get_width()) // 2, py + 8))
+
+            # Монеты
+            cb = pygame.Rect(px + 15, py + 30, 150, 28)
+            pygame.draw.rect(screen, (180, 140, 40), cb)
+            ct = font_small.render("+10000 монет", True, (255, 255, 255))
+            screen.blit(ct, (cb.centerx - ct.get_width() // 2, cb.centery - ct.get_height() // 2))
+
+            # Ресурсы
+            screen.blit(font_hud.render("Ресурсы (+100):", True, (230, 230, 230)), (px + 15, py + 62))
+            all_res = [
+                "Земля", "Дерево", "Камень", "Тём.Камень", "Крас.Камень",
+                "Доска", "Палка", "Уголь", "Медь", "Серебро",
+                "Железо", "Жел. Слиток", "Золото", "Золот. Слиток", "Топаз",
+                "Аметист", "Сапфир", "Алмаз", "Изумруд", "Кристаллит",
+                "Тенерит", "Обсидиан", "Рубин", "Платина", "Магматит",
+                "Зач.Кварц", "Лестница", "Факел",
+            ]
+            cols = 5
+            col_w = (pw - 30) // cols
+            for idx, res in enumerate(all_res):
+                bx = px + 15 + (idx % cols) * col_w
+                by = py + 78 + (idx // cols) * 26
+                br = pygame.Rect(bx, by, col_w - 4, 22)
+                pygame.draw.rect(screen, (55, 55, 80), br)
+                rt = font_small.render(res[:10], True, (255, 255, 255))
+                screen.blit(rt, (br.centerx - rt.get_width() // 2, br.centery - rt.get_height() // 2))
+
+            # Кирки
+            res_rows = math.ceil(len(all_res) / cols)
+            pick_y = py + 78 + res_rows * 26 + 8
+            screen.blit(font_hud.render("Кирки:", True, (230, 230, 230)), (px + 15, pick_y))
+            pick_y += 16
+            all_picks = sorted(PICKAXE_DATA.keys(), key=lambda k: PICKAXE_DATA[k]["tier"])
+            pick_cols = 6
+            pick_w = (pw - 30) // pick_cols
+            for idx, pk in enumerate(all_picks):
+                bx = px + 15 + (idx % pick_cols) * pick_w
+                by = pick_y + (idx // pick_cols) * 30
+                br = pygame.Rect(bx, by, pick_w - 4, 26)
+                pygame.draw.rect(screen, (80, 55, 40), br)
+                rt = font_small.render(pk[:10], True, (255, 255, 255))
+                screen.blit(rt, (br.centerx - rt.get_width() // 2, br.centery - rt.get_height() // 2))
+
+            # Станции и аксессуары
+            pick_rows = math.ceil(len(all_picks) / pick_cols)
+            acc_y = pick_y + pick_rows * 30 + 8
+            screen.blit(font_hud.render("Станции и аксессуары:", True, (230, 230, 230)), (px + 15, acc_y))
+            acc_y += 16
+            acc_btns = [
+                ("Верстак", (180, 140, 40)), ("Печка", (180, 100, 40)),
+                ("Амулет", (160, 80, 200)), ("Магнит", (200, 50, 50)),
+                ("Сапоги", (40, 160, 80)), ("Каска", (80, 140, 200)),
+                ("Пояс", (160, 120, 50)),
+            ]
+            btn_w = (pw - 30) // 4
+            for idx, (txt, col) in enumerate(acc_btns):
+                bx = px + 15 + (idx % 4) * (btn_w + 4)
+                by = acc_y + (idx // 4) * 32
+                br = pygame.Rect(bx, by, btn_w, 28)
+                pygame.draw.rect(screen, col, br)
+                rt = font_small.render(txt, True, (255, 255, 255))
+                screen.blit(rt, (br.centerx - rt.get_width() // 2, br.centery - rt.get_height() // 2))
+
+        pygame.display.flip()
+
+
+if __name__ == "__main__":
+    game = SandboxGame()
+    game.run()
